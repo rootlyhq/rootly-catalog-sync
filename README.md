@@ -179,6 +179,8 @@ rootly-catalog-sync sync --config=rootly-catalog-sync.hcl
 | `backstage` | Backstage catalog API | `backstage.url`, `backstage.token` |
 | `graphql` | Arbitrary GraphQL endpoint | `graphql.url`, `graphql.query`, `graphql.result` |
 | `csv` | CSV files with header row | `csv.files`, `csv.delimiter` |
+| `url` | Fetch YAML/JSON from remote URLs | `url.urls`, `url.headers` |
+| `http` | Generic REST API with JSONPath extraction | `http.url`, `http.result`, `http.headers` |
 
 #### GitHub source
 
@@ -226,6 +228,40 @@ sources:
         mode: cursor
         cursor_path: data.services.pageInfo.endCursor
         page_size: 100
+```
+
+#### URL source
+
+```yaml
+sources:
+  - url:
+      urls:
+        - https://internal.company.com/catalog/services.yaml
+        - https://internal.company.com/catalog/teams.json
+      headers:
+        Authorization: "Bearer $(API_TOKEN)"
+```
+
+#### HTTP source
+
+```yaml
+sources:
+  - http:
+      url: https://api.internal.com/v1/services
+      method: GET
+      headers:
+        Authorization: "Bearer $(API_TOKEN)"
+      result: data.services
+```
+
+```yaml
+# POST with body
+sources:
+  - http:
+      url: https://api.internal.com/graphql
+      method: POST
+      body: '{"query": "{ services { id name owner } }"}'
+      result: data.services
 ```
 
 ### Environment variables

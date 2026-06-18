@@ -19,6 +19,21 @@ type SourceConfig struct {
 	Backstage *BackstageSourceConfig `yaml:"backstage,omitempty" json:"backstage,omitempty" hcl:"backstage,block"`
 	GraphQL   *GraphQLSourceConfig   `yaml:"graphql,omitempty" json:"graphql,omitempty" hcl:"graphql,block"`
 	CSV       *CSVSourceConfig       `yaml:"csv,omitempty" json:"csv,omitempty" hcl:"csv,block"`
+	URL       *URLSourceConfig       `yaml:"url,omitempty" json:"url,omitempty" hcl:"url,block"`
+	HTTP      *HTTPSourceConfig      `yaml:"http,omitempty" json:"http,omitempty" hcl:"http,block"`
+}
+
+type URLSourceConfig struct {
+	URLs    []string          `yaml:"urls" json:"urls" hcl:"urls"`
+	Headers map[string]string `yaml:"headers,omitempty" json:"headers,omitempty" hcl:"headers,optional"`
+}
+
+type HTTPSourceConfig struct {
+	URL     string            `yaml:"url" json:"url" hcl:"url"`
+	Method  string            `yaml:"method,omitempty" json:"method,omitempty" hcl:"method,optional"`
+	Headers map[string]string `yaml:"headers,omitempty" json:"headers,omitempty" hcl:"headers,optional"`
+	Body    string            `yaml:"body,omitempty" json:"body,omitempty" hcl:"body,optional"`
+	Result  string            `yaml:"result" json:"result" hcl:"result"`
 }
 
 type LocalSourceConfig struct {

@@ -29,6 +29,12 @@ func FromConfig(cfg config.SourceConfig, baseDir string) (Source, error) {
 	if cfg.CSV != nil {
 		count++
 	}
+	if cfg.URL != nil {
+		count++
+	}
+	if cfg.HTTP != nil {
+		count++
+	}
 
 	if count == 0 {
 		return nil, fmt.Errorf("no source type configured")
@@ -52,6 +58,10 @@ func FromConfig(cfg config.SourceConfig, baseDir string) (Source, error) {
 		return NewGraphQLSource(cfg.GraphQL), nil
 	case cfg.CSV != nil:
 		return NewCSVSource(cfg.CSV.Files, cfg.CSV.Delimiter, baseDir), nil
+	case cfg.URL != nil:
+		return NewURLSource(cfg.URL), nil
+	case cfg.HTTP != nil:
+		return NewHTTPSource(cfg.HTTP), nil
 	default:
 		return nil, fmt.Errorf("source type not yet supported")
 	}
