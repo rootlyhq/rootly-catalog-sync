@@ -1,8 +1,10 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"net/http"
@@ -10,22 +12,47 @@ import (
 	"time"
 )
 
-func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Response, error) {
-	var lastErr error
+// retryHTTPClient wraps an *http.Client with retry logic.
+// It implements the rootly.HttpRequestDoer interface (Do(*http.Request) (*http.Response, error)).
+type retryHTTPClient struct {
+	inner      *http.Client
+	maxRetries int
+}
 
-	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+func (rc *retryHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	ctx := req.Context()
+
+	// Buffer the request body so it can be replayed on retries.
+	var bodyBytes []byte
+	if req.Body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(req.Body)
+		if err != nil {
+			return nil, fmt.Errorf("reading request body for retry: %w", err)
+		}
+		_ = req.Body.Close()
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= rc.maxRetries; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 
-		resp, err := c.httpClient.Do(req)
+		// Reset the body for each attempt.
+		if bodyBytes != nil {
+			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			req.ContentLength = int64(len(bodyBytes))
+		}
+
+		resp, err := rc.inner.Do(req)
 		if err != nil {
 			lastErr = err
-			if attempt < c.maxRetries {
+			if attempt < rc.maxRetries {
 				sleepWithJitter(ctx, attempt)
 				continue
 			}
-			return nil, fmt.Errorf("after %d retries: %w", c.maxRetries, lastErr)
+			return nil, fmt.Errorf("after %d retries: %w", rc.maxRetries, lastErr)
 		}
 
 		if !isRetryable(resp.StatusCode) {
@@ -35,7 +62,7 @@ func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 		_ = resp.Body.Close()
 		lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
 
-		if attempt < c.maxRetries {
+		if attempt < rc.maxRetries {
 			wait := retryDelay(resp, attempt)
 			select {
 			case <-ctx.Done():
@@ -45,7 +72,7 @@ func (c *Client) doWithRetry(ctx context.Context, req *http.Request) (*http.Resp
 		}
 	}
 
-	return nil, fmt.Errorf("after %d retries: %w", c.maxRetries, lastErr)
+	return nil, fmt.Errorf("after %d retries: %w", rc.maxRetries, lastErr)
 }
 
 func isRetryable(status int) bool {

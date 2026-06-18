@@ -1,15 +1,15 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
+
+	"github.com/oapi-codegen/nullable"
+	rootly "github.com/rootlyhq/rootly-go"
 
 	"github.com/rootlyhq/rootly-catalog-sync/catalog"
 )
@@ -21,14 +21,6 @@ const (
 	MaxBatchSize      = 100
 	DefaultPageSize   = 250
 	UserAgent         = "rootly-catalog-sync/0.1.0 (+https://github.com/rootlyhq/rootly-catalog-sync)"
-
-	jData       = "data"
-	jType       = "type"
-	jAttributes = "attributes"
-	jName       = "name"
-	jSlug       = "slug"
-	jExtID      = "external_id"
-	jDesc       = "description"
 )
 
 type Client struct {
@@ -37,6 +29,7 @@ type Client struct {
 	apiKey     string
 	httpClient *http.Client
 	maxRetries int
+	sdk        *rootly.ClientWithResponses
 }
 
 type CatalogSpec struct {
@@ -111,54 +104,39 @@ func New(apiKey string, opts ...Option) *Client {
 	for _, o := range opts {
 		o(c)
 	}
-	return c
-}
 
-func (c *Client) newRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
-	u := strings.TrimRight(c.baseURL, "/") + strings.TrimRight(c.apiPath, "/") + path
-
-	var bodyReader io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling body: %w", err)
-		}
-		bodyReader = bytes.NewReader(b)
+	// Build the SDK client. The SDK hardcodes "/v1/" in its operation paths,
+	// so the server URL is baseURL + any prefix before "/v1" in apiPath.
+	// e.g. apiPath="/v1" → serverURL=baseURL, apiPath="/api/v1" → serverURL=baseURL+"/api"
+	trimmedPath := strings.TrimRight(c.apiPath, "/")
+	trimmedPath = strings.TrimSuffix(trimmedPath, "/v1")
+	serverURL := strings.TrimRight(c.baseURL, "/")
+	if trimmedPath != "" {
+		serverURL += trimmedPath
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, u, bodyReader)
+	sdkOpts := []rootly.ClientOption{
+		rootly.WithHTTPClient(&retryHTTPClient{
+			inner:      c.httpClient,
+			maxRetries: c.maxRetries,
+		}),
+		rootly.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+			if c.apiKey != "" {
+				req.Header.Set("Authorization", "Bearer "+c.apiKey)
+			}
+			req.Header.Set("User-Agent", UserAgent)
+			return nil
+		}),
+	}
+
+	sdk, err := rootly.NewClientWithResponses(serverURL, sdkOpts...)
 	if err != nil {
-		return nil, err
+		// This should not happen with valid inputs; panic to surface misuse early.
+		panic(fmt.Sprintf("rootly-go: NewClientWithResponses: %v", err))
 	}
+	c.sdk = sdk
 
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
-	req.Header.Set("User-Agent", UserAgent)
-	req.Header.Set("Content-Type", "application/vnd.api+json")
-	req.Header.Set("Accept", "application/vnd.api+json")
-
-	return req, nil
-}
-
-type jsonAPIListResponse struct {
-	Data []jsonAPIResource `json:"data"`
-	Meta struct {
-		NextCursor  string `json:"next_cursor"`
-		TotalCount  int    `json:"total_count"`
-		TotalPages  int    `json:"total_pages"`
-		CurrentPage int    `json:"current_page"`
-	} `json:"meta"`
-}
-
-type jsonAPIResource struct {
-	ID         string          `json:"id"`
-	Type       string          `json:"type"`
-	Attributes json.RawMessage `json:"attributes"`
-}
-
-type jsonAPISingleResponse struct {
-	Data jsonAPIResource `json:"data"`
+	return c
 }
 
 // ListCatalogs returns all catalogs, paginating with page[number].
@@ -167,45 +145,32 @@ func (c *Client) ListCatalogs(ctx context.Context) ([]CatalogInfo, error) {
 	page := 1
 
 	for {
-		path := fmt.Sprintf("/catalogs?page[number]=%d&page[size]=%d", page, DefaultPageSize)
-		req, err := c.newRequest(ctx, http.MethodGet, path, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		resp, err := c.doWithRetry(ctx, req)
+		pageSize := DefaultPageSize
+		resp, err := c.sdk.ListCatalogsWithResponse(ctx, &rootly.ListCatalogsParams{
+			PageNumber: &page,
+			PageSize:   &pageSize,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("listing catalogs: %w", err)
 		}
-
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("listing catalogs: unexpected status %d", resp.StatusCode)
+		if resp.ApplicationVndAPIJSON200 == nil {
+			return nil, fmt.Errorf("listing catalogs: unexpected status %d", resp.StatusCode())
 		}
 
-		var parsed jsonAPIListResponse
-		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("decoding catalogs response: %w", err)
-		}
-		_ = resp.Body.Close()
-
-		for _, r := range parsed.Data {
-			var attrs struct {
-				Name string `json:"name"`
-				Slug string `json:"slug"`
-			}
-			if err := json.Unmarshal(r.Attributes, &attrs); err != nil {
-				return nil, fmt.Errorf("decoding catalog attributes: %w", err)
-			}
+		data := resp.ApplicationVndAPIJSON200
+		for _, r := range data.Data {
 			catalogs = append(catalogs, CatalogInfo{
 				ID:   r.ID,
-				Name: attrs.Name,
-				Slug: attrs.Slug,
+				Name: r.Attributes.Name,
+				// Slug is not available in the SDK's Catalog type.
 			})
 		}
 
-		if len(parsed.Data) == 0 || parsed.Meta.CurrentPage >= parsed.Meta.TotalPages {
+		currentPage := 0
+		if data.Meta.CurrentPage.IsSpecified() && !data.Meta.CurrentPage.IsNull() {
+			currentPage = data.Meta.CurrentPage.MustGet()
+		}
+		if len(data.Data) == 0 || currentPage >= data.Meta.TotalPages {
 			break
 		}
 		page++
@@ -214,7 +179,7 @@ func (c *Client) ListCatalogs(ctx context.Context) ([]CatalogInfo, error) {
 	return catalogs, nil
 }
 
-// ListEntities returns all entities for a catalog, using cursor-based pagination.
+// ListEntities returns all entities for a catalog, using page-based pagination.
 // It also fetches catalog fields to resolve property IDs to field names.
 func (c *Client) ListEntities(ctx context.Context, catalogID string) ([]catalog.LiveEntity, error) {
 	fields, err := c.listFields(ctx, catalogID)
@@ -227,84 +192,76 @@ func (c *Client) ListEntities(ctx context.Context, catalogID string) ([]catalog.
 	}
 
 	var entities []catalog.LiveEntity
-	var cursor string
+	page := 1
 
 	for {
-		path := fmt.Sprintf("/catalogs/%s/entities?page[size]=%d", catalogID, DefaultPageSize)
-		if cursor != "" {
-			path += "&page[after]=" + url.QueryEscape(cursor)
-		}
-
-		req, err := c.newRequest(ctx, http.MethodGet, path, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		resp, err := c.doWithRetry(ctx, req)
+		pageSize := DefaultPageSize
+		resp, err := c.sdk.ListCatalogEntitiesWithResponse(ctx, catalogID, &rootly.ListCatalogEntitiesParams{
+			PageNumber: &page,
+			PageSize:   &pageSize,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("listing entities: %w", err)
 		}
-
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("listing entities: unexpected status %d", resp.StatusCode)
+		if resp.ApplicationVndAPIJSON200 == nil {
+			return nil, fmt.Errorf("listing entities: unexpected status %d", resp.StatusCode())
 		}
 
-		var parsed jsonAPIListResponse
-		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("decoding entities response: %w", err)
-		}
-		_ = resp.Body.Close()
-
-		for _, r := range parsed.Data {
-			ent, err := parseEntity(r, fieldIDToName)
-			if err != nil {
-				return nil, err
-			}
+		data := resp.ApplicationVndAPIJSON200
+		for _, r := range data.Data {
+			ent := sdkEntityToLive(r, fieldIDToName)
 			entities = append(entities, ent)
 		}
 
-		if parsed.Meta.NextCursor == "" || len(parsed.Data) == 0 {
+		currentPage := 0
+		if data.Meta.CurrentPage.IsSpecified() && !data.Meta.CurrentPage.IsNull() {
+			currentPage = data.Meta.CurrentPage.MustGet()
+		}
+		if len(data.Data) == 0 || currentPage >= data.Meta.TotalPages {
 			break
 		}
-		cursor = parsed.Meta.NextCursor
+		page++
 	}
 
 	return entities, nil
 }
 
-func parseEntity(r jsonAPIResource, fieldIDToName map[string]string) (catalog.LiveEntity, error) {
-	var attrs struct {
-		Name        string `json:"name"`
-		ExternalID  string `json:"external_id"`
-		Description string `json:"description"`
-		ManagedBy   string `json:"managed_by"`
-		Properties  []struct {
-			CatalogPropertyID string `json:"catalog_property_id"`
-			Value             string `json:"value"`
-		} `json:"properties"`
-	}
-	if err := json.Unmarshal(r.Attributes, &attrs); err != nil {
-		return catalog.LiveEntity{}, fmt.Errorf("decoding entity attributes: %w", err)
-	}
-
-	entityFields := make(map[string]string, len(attrs.Properties))
-	for _, p := range attrs.Properties {
+func sdkEntityToLive(r struct {
+	Attributes rootly.CatalogEntity             `json:"attributes"`
+	ID         string                           `json:"id"`
+	Type       rootly.CatalogEntityListDataType `json:"type"`
+}, fieldIDToName map[string]string) catalog.LiveEntity {
+	entityFields := make(map[string]string, len(r.Attributes.Properties))
+	for _, p := range r.Attributes.Properties {
 		name := fieldIDToName[p.CatalogPropertyID]
 		if name != "" {
 			entityFields[name] = p.Value
 		}
 	}
 
+	externalID := ""
+	if r.Attributes.ExternalID.IsSpecified() && !r.Attributes.ExternalID.IsNull() {
+		externalID = r.Attributes.ExternalID.MustGet()
+	}
+
+	description := ""
+	if r.Attributes.Description.IsSpecified() && !r.Attributes.Description.IsNull() {
+		description = r.Attributes.Description.MustGet()
+	}
+
+	managedBy := ""
+	if r.Attributes.ManagedBy != nil {
+		managedBy = string(*r.Attributes.ManagedBy)
+	}
+
 	return catalog.LiveEntity{
 		ID:          r.ID,
-		ExternalID:  attrs.ExternalID,
-		Name:        attrs.Name,
-		Description: attrs.Description,
-		ManagedBy:   attrs.ManagedBy,
+		ExternalID:  externalID,
+		Name:        r.Attributes.Name,
+		Description: description,
+		ManagedBy:   managedBy,
 		Fields:      entityFields,
-	}, nil
+	}
 }
 
 // EnsureCatalog finds a catalog by name or creates it, returning the catalog ID.
@@ -320,40 +277,23 @@ func (c *Client) EnsureCatalog(ctx context.Context, spec CatalogSpec) (string, e
 		}
 	}
 
-	body := map[string]any{
-		jData: map[string]any{
-			jType: "catalogs",
-			jAttributes: map[string]any{
-				"name": spec.Name,
-				jDesc:  spec.Description,
-			},
-		},
+	body := rootly.NewCatalog{}
+	body.Data.Type = rootly.NewCatalogDataTypeCatalogs
+	body.Data.Attributes.Name = spec.Name
+	if spec.Description != "" {
+		body.Data.Attributes.Description = nullable.NewNullableWithValue(spec.Description)
 	}
 
-	req, err := c.newRequest(ctx, http.MethodPost, "/catalogs", body)
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := c.doWithRetry(ctx, req)
+	resp, err := c.sdk.CreateCatalogWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
 	if err != nil {
 		return "", fmt.Errorf("creating catalog: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		return "", fmt.Errorf("creating catalog: unexpected status %d: %s", resp.StatusCode, string(respBody))
+	if resp.ApplicationVndAPIJSON201 == nil {
+		return "", fmt.Errorf("creating catalog: unexpected status %d: %s", resp.StatusCode(), string(resp.Body))
 	}
 
-	var parsed jsonAPISingleResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		_ = resp.Body.Close()
-		return "", fmt.Errorf("decoding created catalog: %w", err)
-	}
-	_ = resp.Body.Close()
-
-	return parsed.Data.ID, nil
+	return resp.ApplicationVndAPIJSON201.Data.ID, nil
 }
 
 // EnsureFields ensures all desired fields exist on a catalog, creating any that are missing.
@@ -378,32 +318,20 @@ func (c *Client) EnsureFields(ctx context.Context, catalogID string, fields []Fi
 			kind = "text"
 		}
 
-		body := map[string]any{
-			jData: map[string]any{
-				jType: "catalog_fields",
-				jAttributes: map[string]any{
-					"name":     f.Name,
-					"kind":     kind,
-					"slug":     f.Slug,
-					"multiple": f.Multiple,
-					"required": f.Required,
-				},
-			},
-		}
+		body := rootly.NewCatalogField{}
+		body.Data.Type = rootly.NewCatalogFieldDataTypeCatalogProperties
+		body.Data.Attributes.Name = f.Name
+		body.Data.Attributes.Kind = rootly.NewCatalogFieldDataAttributesKind(kind)
+		body.Data.Attributes.Multiple = &f.Multiple
+		body.Data.Attributes.Required = &f.Required
 
-		req, err := c.newRequest(ctx, http.MethodPost, fmt.Sprintf("/catalogs/%s/fields", catalogID), body)
-		if err != nil {
-			return err
-		}
-
-		resp, err := c.doWithRetry(ctx, req)
+		resp, err := c.sdk.CreateCatalogPropertyWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, catalogID, body)
 		if err != nil {
 			return fmt.Errorf("creating field %q: %w", f.Name, err)
 		}
-		_ = resp.Body.Close()
 
-		if resp.StatusCode != http.StatusCreated {
-			return fmt.Errorf("creating field %q: unexpected status %d", f.Name, resp.StatusCode)
+		if resp.StatusCode() != http.StatusCreated {
+			return fmt.Errorf("creating field %q: unexpected status %d", f.Name, resp.StatusCode())
 		}
 	}
 
@@ -417,48 +345,31 @@ type fieldInfo struct {
 }
 
 func (c *Client) listFields(ctx context.Context, catalogID string) ([]fieldInfo, error) {
+	resp, err := c.sdk.ListCatalogPropertiesWithResponse(ctx, catalogID)
+	if err != nil {
+		return nil, fmt.Errorf("listing fields: %w", err)
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("listing fields: unexpected status %d", resp.StatusCode())
+	}
+
+	// ListCatalogPropertiesResponse has no typed body; parse manually.
+	var parsed rootly.CatalogPropertyList
+	if err := json.Unmarshal(resp.Body, &parsed); err != nil {
+		return nil, fmt.Errorf("decoding fields response: %w", err)
+	}
+
 	var fields []fieldInfo
-	page := 1
-
-	for {
-		path := fmt.Sprintf("/catalogs/%s/fields?page[number]=%d&page[size]=%d", catalogID, page, DefaultPageSize)
-		req, err := c.newRequest(ctx, http.MethodGet, path, nil)
-		if err != nil {
-			return nil, err
+	for _, r := range parsed.Data {
+		slug := ""
+		if r.Attributes.Slug != nil {
+			slug = *r.Attributes.Slug
 		}
-
-		resp, err := c.doWithRetry(ctx, req)
-		if err != nil {
-			return nil, fmt.Errorf("listing fields: %w", err)
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("listing fields: unexpected status %d", resp.StatusCode)
-		}
-
-		var parsed jsonAPIListResponse
-		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("decoding fields response: %w", err)
-		}
-		_ = resp.Body.Close()
-
-		for _, r := range parsed.Data {
-			var attrs struct {
-				Name string `json:"name"`
-				Slug string `json:"slug"`
-			}
-			if err := json.Unmarshal(r.Attributes, &attrs); err != nil {
-				return nil, fmt.Errorf("decoding field attributes: %w", err)
-			}
-			fields = append(fields, fieldInfo{ID: r.ID, Name: attrs.Name, Slug: attrs.Slug})
-		}
-
-		if len(parsed.Data) == 0 || parsed.Meta.CurrentPage >= parsed.Meta.TotalPages {
-			break
-		}
-		page++
+		fields = append(fields, fieldInfo{
+			ID:   r.ID,
+			Name: r.Attributes.Name,
+			Slug: slug,
+		})
 	}
 
 	return fields, nil
@@ -475,46 +386,58 @@ func (c *Client) BulkUpsert(ctx context.Context, catalogID string, ents []catalo
 		}
 		batch := ents[i:end]
 
-		entities := make([]map[string]any, len(batch))
+		sdkEntities := make([]struct {
+			BackstageID nullable.Nullable[string] `json:"backstage_id,omitempty"`
+			Description nullable.Nullable[string] `json:"description,omitempty"`
+			ExternalID  string                    `json:"external_id"`
+			Fields      []struct {
+				CatalogFieldID    *string `json:"catalog_field_id,omitempty"`
+				CatalogPropertyID *string `json:"catalog_property_id,omitempty"`
+				Value             string  `json:"value"`
+			} `json:"fields,omitempty"`
+			Name *string `json:"name,omitempty"`
+		}, len(batch))
+
 		for j, e := range batch {
-			var fields []map[string]string
+			sdkEntities[j].ExternalID = e.ExternalID
+			sdkEntities[j].Name = &e.Name
+
+			if e.BackstageID != "" {
+				sdkEntities[j].BackstageID = nullable.NewNullableWithValue(e.BackstageID)
+			}
+
 			for slug, val := range e.Fields {
-				fields = append(fields, map[string]string{
-					"catalog_field_id": slug,
-					"value":            val,
+				s := slug // capture for pointer
+				sdkEntities[j].Fields = append(sdkEntities[j].Fields, struct {
+					CatalogFieldID    *string `json:"catalog_field_id,omitempty"`
+					CatalogPropertyID *string `json:"catalog_property_id,omitempty"`
+					Value             string  `json:"value"`
+				}{
+					CatalogFieldID: &s,
+					Value:          val,
 				})
 			}
-			ent := map[string]any{
-				jExtID:   e.ExternalID,
-				"name":   e.Name,
-				"fields": fields,
-			}
-			if e.BackstageID != "" {
-				ent["backstage_id"] = e.BackstageID
-			}
-			entities[j] = ent
 		}
 
-		body := map[string]any{"entities": entities}
-		req, err := c.newRequest(ctx, http.MethodPost, fmt.Sprintf("/catalogs/%s/entities/bulk_upsert", catalogID), body)
-		if err != nil {
-			return nil, err
+		body := rootly.BulkUpsertCatalogEntities{
+			Entities: sdkEntities,
 		}
 
-		resp, err := c.doWithRetry(ctx, req)
+		resp, err := c.sdk.BulkUpsertCatalogEntitiesWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, catalogID, body)
 		if err != nil {
 			return nil, fmt.Errorf("bulk upsert: %w", err)
 		}
 
+		// The SDK response type for 200 returns a JSON:API list of entities,
+		// but our old code expected {"succeeded": N, "errors": [...]}.
+		// Parse the raw body to maintain backward compatibility.
 		var batchResult struct {
 			Succeeded int         `json:"succeeded"`
 			Errors    []BulkError `json:"errors"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&batchResult); err != nil {
-			_ = resp.Body.Close()
+		if err := json.Unmarshal(resp.Body, &batchResult); err != nil {
 			return nil, fmt.Errorf("decoding bulk upsert response: %w", err)
 		}
-		_ = resp.Body.Close()
 
 		result.Succeeded += batchResult.Succeeded
 		result.Errors = append(result.Errors, batchResult.Errors...)
@@ -534,29 +457,33 @@ func (c *Client) BulkDelete(ctx context.Context, catalogID string, externalIDs [
 		}
 		batch := externalIDs[i:end]
 
-		body := map[string]any{"external_ids": batch}
-		req, err := c.newRequest(ctx, http.MethodPost, fmt.Sprintf("/catalogs/%s/entities/bulk_delete", catalogID), body)
-		if err != nil {
-			return nil, err
+		var body rootly.BulkDestroyCatalogEntities
+		if err := body.FromBulkDestroyCatalogEntities0(rootly.BulkDestroyCatalogEntities0{
+			ExternalIDs: batch,
+		}); err != nil {
+			return nil, fmt.Errorf("building bulk delete body: %w", err)
 		}
 
-		resp, err := c.doWithRetry(ctx, req)
+		resp, err := c.sdk.BulkDeleteCatalogEntitiesWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, catalogID, body)
 		if err != nil {
 			return nil, fmt.Errorf("bulk delete: %w", err)
 		}
 
-		var batchResult struct {
-			DeletedExternalIDs  []string `json:"deleted_external_ids"`
-			NotFoundExternalIDs []string `json:"not_found_external_ids"`
+		if resp.ApplicationVndAPIJSON200 != nil && resp.ApplicationVndAPIJSON200.Data != nil {
+			result.DeletedExternalIDs = append(result.DeletedExternalIDs, resp.ApplicationVndAPIJSON200.Data.DeletedExternalIDs...)
+			result.NotFoundExternalIDs = append(result.NotFoundExternalIDs, resp.ApplicationVndAPIJSON200.Data.NotFoundExternalIDs...)
+		} else {
+			// Fallback: parse raw body for backward compatibility with test servers.
+			var batchResult struct {
+				DeletedExternalIDs  []string `json:"deleted_external_ids"`
+				NotFoundExternalIDs []string `json:"not_found_external_ids"`
+			}
+			if err := json.Unmarshal(resp.Body, &batchResult); err != nil {
+				return nil, fmt.Errorf("decoding bulk delete response: %w", err)
+			}
+			result.DeletedExternalIDs = append(result.DeletedExternalIDs, batchResult.DeletedExternalIDs...)
+			result.NotFoundExternalIDs = append(result.NotFoundExternalIDs, batchResult.NotFoundExternalIDs...)
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&batchResult); err != nil {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("decoding bulk delete response: %w", err)
-		}
-		_ = resp.Body.Close()
-
-		result.DeletedExternalIDs = append(result.DeletedExternalIDs, batchResult.DeletedExternalIDs...)
-		result.NotFoundExternalIDs = append(result.NotFoundExternalIDs, batchResult.NotFoundExternalIDs...)
 	}
 
 	return result, nil

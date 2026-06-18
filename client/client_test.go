@@ -16,13 +16,14 @@ import (
 func TestListEntities(t *testing.T) {
 	entityCallCount := 0
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/catalogs/cat-1/fields", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/catalogs/cat-1/properties", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
-				{"id": "f1", "type": "catalog_fields", "attributes": map[string]any{"name": "owner", "slug": "owner"}},
+				{"id": "f1", "type": "catalog_properties", "attributes": map[string]any{"name": "owner", "slug": "owner"}},
 			},
-			"meta": map[string]any{"total_pages": 1, "current_page": 1},
+			"links": map[string]any{"first": "", "self": ""},
+			"meta":  map[string]any{"total_pages": 1, "current_page": 1, "total_count": 1},
 		})
 	})
 	mux.HandleFunc("/v1/catalogs/cat-1/entities", func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +57,8 @@ func TestListEntities(t *testing.T) {
 						},
 					},
 				},
-				"meta": map[string]any{"next_cursor": "cursor-page2"},
+				"links": map[string]any{"first": "", "self": ""},
+				"meta":  map[string]any{"total_pages": 2, "current_page": 1, "total_count": 3},
 			})
 			return
 		}
@@ -74,7 +76,8 @@ func TestListEntities(t *testing.T) {
 					},
 				},
 			},
-			"meta": map[string]any{"next_cursor": ""},
+			"links": map[string]any{"first": "", "self": ""},
+			"meta":  map[string]any{"total_pages": 2, "current_page": 2, "total_count": 3},
 		})
 	})
 	srv := httptest.NewServer(mux)
@@ -209,8 +212,9 @@ func TestRetryOn429(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"data": []any{},
-			"meta": map[string]any{"total_pages": 1, "current_page": 1},
+			"data":  []any{},
+			"links": map[string]any{"first": "", "self": ""},
+			"meta":  map[string]any{"total_pages": 1, "current_page": 1, "total_count": 0},
 		})
 	}))
 	defer srv.Close()
@@ -226,37 +230,18 @@ func TestRetryOn429(t *testing.T) {
 	}
 }
 
-func TestNewRequestURLConstruction(t *testing.T) {
-	// Regression: url.JoinPath was encoding ? as %3F in query strings.
-	// The fix uses string concatenation instead.
-	c := New("test-key", WithBaseURL("https://example.com"), WithMaxRetries(0))
-	req, err := c.newRequest(context.Background(), http.MethodGet, "/catalogs?page[number]=1&page[size]=250", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	expected := "https://example.com/v1/catalogs?page[number]=1&page[size]=250"
-	if req.URL.String() != expected {
-		t.Errorf("expected URL %q, got %q", expected, req.URL.String())
-	}
-
-	// Verify the ? is not percent-encoded
-	if strings.Contains(req.URL.String(), "%3F") {
-		t.Error("URL contains encoded '?' (%3F) — query params are broken")
-	}
-}
-
 func TestListEntities_ResolvesPropertyIDs(t *testing.T) {
 	// Regression: the API returns entity properties with catalog_property_id (UUID),
 	// not field names. ListEntities must fetch fields first and map IDs to names.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/catalogs/cat-1/fields", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/catalogs/cat-1/properties", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
-				{"id": "field-uuid-1", "type": "catalog_fields", "attributes": map[string]any{"name": "owner", "slug": "owner"}},
+				{"id": "field-uuid-1", "type": "catalog_properties", "attributes": map[string]any{"name": "owner", "slug": "owner"}},
 			},
-			"meta": map[string]any{"total_pages": 1, "current_page": 1},
+			"links": map[string]any{"first": "", "self": ""},
+			"meta":  map[string]any{"total_pages": 1, "current_page": 1, "total_count": 1},
 		})
 	})
 	mux.HandleFunc("/v1/catalogs/cat-1/entities", func(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +262,8 @@ func TestListEntities_ResolvesPropertyIDs(t *testing.T) {
 					},
 				},
 			},
-			"meta": map[string]any{"next_cursor": ""},
+			"links": map[string]any{"first": "", "self": ""},
+			"meta":  map[string]any{"total_pages": 1, "current_page": 1, "total_count": 1},
 		})
 	})
 	srv := httptest.NewServer(mux)
@@ -304,11 +290,12 @@ func TestListEntities_ResolvesPropertyIDs(t *testing.T) {
 func TestWithAPIPath(t *testing.T) {
 	var requestedPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestedPath = r.URL.Path + "?" + r.URL.RawQuery
+		requestedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/vnd.api+json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"data": []any{},
-			"meta": map[string]any{"total_pages": 1, "current_page": 1},
+			"data":  []any{},
+			"links": map[string]any{"first": "", "self": ""},
+			"meta":  map[string]any{"total_pages": 1, "current_page": 1, "total_count": 0},
 		})
 	}))
 	defer srv.Close()
@@ -335,13 +322,14 @@ func TestEnsureCatalog(t *testing.T) {
 						"type": "catalogs",
 						"attributes": map[string]any{
 							"name": "My Catalog",
-							"slug": "my-catalog",
 						},
 					},
 				},
+				"links": map[string]any{"first": "", "self": ""},
 				"meta": map[string]any{
 					"total_pages":  1,
 					"current_page": 1,
+					"total_count":  1,
 				},
 			})
 		}))
@@ -365,10 +353,12 @@ func TestEnsureCatalog(t *testing.T) {
 
 			if r.Method == http.MethodGet {
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"data": []any{},
+					"data":  []any{},
+					"links": map[string]any{"first": "", "self": ""},
 					"meta": map[string]any{
 						"total_pages":  1,
 						"current_page": 1,
+						"total_count":  0,
 					},
 				})
 				return
@@ -395,7 +385,6 @@ func TestEnsureCatalog(t *testing.T) {
 						"type": "catalogs",
 						"attributes": map[string]any{
 							"name": "New Catalog",
-							"slug": "new-catalog",
 						},
 					},
 				})
