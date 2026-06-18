@@ -1,5 +1,7 @@
 version: 2
 
+project_name: rootly-catalog-sync
+
 builds:
   - main: ./cmd/rootly-catalog-sync
     binary: rootly-catalog-sync
@@ -12,60 +14,77 @@ builds:
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+    flags:
+      - -trimpath
+    mod_timestamp: "{{.CommitTimestamp}}"
 
 archives:
-  - formats:
+  - id: default
+    formats:
       - tar.gz
     format_overrides:
       - goos: windows
         formats:
           - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
 
 checksum:
   name_template: checksums.txt
 
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
 changelog:
   sort: asc
+  use: github
   filters:
     exclude:
       - "^docs:"
       - "^test:"
+      - "^chore:"
       - "^ci:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
 
 brews:
-  - repository:
+  - name: rootly-catalog-sync
+    ids: [default]
+    repository:
       owner: rootlyhq
       name: homebrew-tap
-    homepage: https://github.com/rootlyhq/rootly-catalog-sync
-    description: Sync external catalog data into Rootly
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/rootlyhq/rootly-catalog-sync"
+    description: "Sync external catalog data into Rootly"
     install: |
       bin.install "rootly-catalog-sync"
+    test: |
+      system "#{bin}/rootly-catalog-sync", "version"
 
-dockers:
-  - image_templates:
-      - "rootlyhq/rootly-catalog-sync:{{ .Version }}-amd64"
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-    goarch: amd64
-  - image_templates:
-      - "rootlyhq/rootly-catalog-sync:{{ .Version }}-arm64"
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/arm64"
-    goarch: arm64
-
-docker_manifests:
-  - name_template: "rootlyhq/rootly-catalog-sync:{{ .Version }}"
-    image_templates:
-      - "rootlyhq/rootly-catalog-sync:{{ .Version }}-amd64"
-      - "rootlyhq/rootly-catalog-sync:{{ .Version }}-arm64"
-  - name_template: "rootlyhq/rootly-catalog-sync:latest"
-    image_templates:
-      - "rootlyhq/rootly-catalog-sync:{{ .Version }}-amd64"
-      - "rootlyhq/rootly-catalog-sync:{{ .Version }}-arm64"
+release:
+  github:
+    owner: rootlyhq
+    name: rootly-catalog-sync
+  draft: false
+  prerelease: auto
+  mode: replace
+  name_template: "v{{ .Version }}"
