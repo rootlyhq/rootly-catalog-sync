@@ -70,7 +70,7 @@ linters:
 
       - linters:
           - goconst
-        text: "string `(ctrl\\+c|enter|backspace|attributes|namespace|backstage|github|graphql)` has"
+        text: "string `(ctrl\\+c|enter|backspace|attributes|namespace|backstage|github|graphql|default)` has"
 
       - path: wizard\.go
         linters:

@@ -484,11 +484,15 @@ func (c *Client) BulkUpsert(ctx context.Context, catalogID string, ents []catalo
 					"value":            val,
 				})
 			}
-			entities[j] = map[string]any{
+			ent := map[string]any{
 				jExtID:   e.ExternalID,
 				"name":   e.Name,
 				"fields": fields,
 			}
+			if e.BackstageID != "" {
+				ent["backstage_id"] = e.BackstageID
+			}
+			entities[j] = ent
 		}
 
 		body := map[string]any{"entities": entities}

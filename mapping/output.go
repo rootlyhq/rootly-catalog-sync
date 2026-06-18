@@ -29,6 +29,11 @@ func MapEntries(entries []source.Entry, out config.Output) ([]catalog.DesiredEnt
 			return nil, fmt.Errorf("entry %d: name evaluated to empty", i)
 		}
 
+		var backstageID string
+		if out.BackstageID != "" {
+			backstageID, _ = tmpl.Eval(out.BackstageID, entry)
+		}
+
 		fields := make(map[string]string, len(out.Fields))
 		for slug, tpl := range out.Fields {
 			val, err := tmpl.Eval(tpl, entry)
@@ -39,9 +44,10 @@ func MapEntries(entries []source.Entry, out config.Output) ([]catalog.DesiredEnt
 		}
 
 		result = append(result, catalog.DesiredEntity{
-			ExternalID: externalID,
-			Name:       name,
-			Fields:     fields,
+			ExternalID:  externalID,
+			Name:        name,
+			BackstageID: backstageID,
+			Fields:      fields,
 		})
 	}
 

@@ -1,9 +1,10 @@
 package catalog
 
 type DesiredEntity struct {
-	ExternalID string
-	Name       string
-	Fields     map[string]string
+	ExternalID  string
+	Name        string
+	BackstageID string
+	Fields      map[string]string
 }
 
 type LiveEntity struct {

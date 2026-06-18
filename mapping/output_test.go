@@ -37,6 +37,43 @@ func TestMapEntriesSimple(t *testing.T) {
 	}
 }
 
+func TestMapEntriesBackstageID(t *testing.T) {
+	entries := []source.Entry{
+		{"id": "svc-1", "name": "Auth", "backstage_id": "Component:default/auth"},
+	}
+	out := config.Output{
+		ExternalID:  "{{ .id }}",
+		Name:        "{{ .name }}",
+		BackstageID: "{{ .backstage_id }}",
+	}
+
+	result, err := MapEntries(entries, out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result[0].BackstageID != "Component:default/auth" {
+		t.Errorf("expected backstage_id %q, got %q", "Component:default/auth", result[0].BackstageID)
+	}
+}
+
+func TestMapEntriesBackstageIDEmpty(t *testing.T) {
+	entries := []source.Entry{
+		{"id": "svc-1", "name": "Auth"},
+	}
+	out := config.Output{
+		ExternalID: "{{ .id }}",
+		Name:       "{{ .name }}",
+	}
+
+	result, err := MapEntries(entries, out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result[0].BackstageID != "" {
+		t.Errorf("expected empty backstage_id, got %q", result[0].BackstageID)
+	}
+}
+
 func TestMapEntriesEmptyExternalIDErrors(t *testing.T) {
 	entries := []source.Entry{
 		{"id": "", "name": "Auth Service"},

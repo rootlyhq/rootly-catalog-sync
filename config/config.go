@@ -70,8 +70,9 @@ type CSVSourceConfig struct {
 }
 
 type Output struct {
-	Catalog    string            `yaml:"catalog" json:"catalog" hcl:"catalog"`
-	ExternalID string            `yaml:"external_id" json:"external_id" hcl:"external_id"`
-	Name       string            `yaml:"name" json:"name" hcl:"name"`
-	Fields     map[string]string `yaml:"fields,omitempty" json:"fields,omitempty" hcl:"fields,optional"`
+	Catalog     string            `yaml:"catalog" json:"catalog" hcl:"catalog"`
+	ExternalID  string            `yaml:"external_id" json:"external_id" hcl:"external_id"`
+	Name        string            `yaml:"name" json:"name" hcl:"name"`
+	BackstageID string            `yaml:"backstage_id,omitempty" json:"backstage_id,omitempty" hcl:"backstage_id,optional"`
+	Fields      map[string]string `yaml:"fields,omitempty" json:"fields,omitempty" hcl:"fields,optional"`
 }
