@@ -1,0 +1,7 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+setup = "go mod download && go build ./..."
+run = "go test ./..."
+archive = "go clean"
+run_mode = "concurrent"

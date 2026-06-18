@@ -1,0 +1,25 @@
+# Binaries
+/rootly-catalog-sync
+dist/
+*.exe
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Plan files
+.rootly-catalog-sync-plan-*.json
+
+# Local config/data (use init to create)
+rootly-catalog-sync.yaml
+catalog/
+
+# Conductor
+.context/

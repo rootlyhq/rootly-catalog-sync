@@ -1,0 +1,90 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - goconst
+    - unconvert
+    - unparam
+    - nakedret
+    - prealloc
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+
+    goconst:
+      min-len: 5
+      min-occurrences: 5
+
+    misspell:
+      locale: US
+
+    nakedret:
+      max-func-lines: 30
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+  exclusions:
+    paths:
+      - vendor
+      - bin
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - goconst
+
+      - linters:
+          - govet
+        text: "shadow: declaration of \"err\" shadows declaration"
+
+      - linters:
+          - errcheck
+        text: "Error return value of `resp.Body.Close` is not checked"
+
+      - linters:
+          - staticcheck
+        text: "QF1001|QF1003"
+
+      - linters:
+          - goconst
+        text: "string `(ctrl\\+c|enter|backspace|attributes|namespace|backstage|github|graphql)` has"
+
+      - path: wizard\.go
+        linters:
+          - goconst
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    gofmt:
+      simplify: true
+
+    goimports:
+      local-prefixes:
+        - github.com/rootlyhq/rootly-catalog-sync
