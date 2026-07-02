@@ -9,7 +9,7 @@ require (
 	github.com/google/go-github/v72 v72.0.0
 	github.com/google/go-jsonnet v0.22.0
 	github.com/hashicorp/hcl/v2 v2.24.0
-	github.com/oapi-codegen/nullable v1.1.0
+	github.com/oapi-codegen/nullable v1.2.0
 	github.com/rootlyhq/rootly-go v0.11.0
 	github.com/spf13/cobra v1.10.2
 	github.com/zclconf/go-cty v1.18.1
