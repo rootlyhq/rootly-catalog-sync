@@ -14,6 +14,7 @@ A CLI tool that reconciles external sources of truth into [Rootly's Catalog](htt
   - [Simple (local YAML files)](docs/examples/simple/) — start here
   - [Backstage](docs/examples/backstage/) — sync from Backstage catalog
   - [GitHub](docs/examples/github/) — sync from GitHub org repositories
+  - [Native Services](docs/examples/native-services/) — sync to native Rootly services
 
 ## Install
 
@@ -263,6 +264,29 @@ sources:
       body: '{"query": "{ services { id name owner } }"}'
       result: data.services
 ```
+
+### Native resource targets
+
+Sync directly to Rootly's native resources instead of custom catalog entities:
+
+```yaml
+outputs:
+  - type: service           # service | functionality | environment | team
+    external_id: "{{ .id }}"
+    name: "{{ .name }}"
+    fields:
+      description: "{{ .description }}"
+      pagerduty_id: "{{ .pagerduty_id }}"
+```
+
+| Type | API endpoint | Sentinel |
+|------|-------------|----------|
+| `service` | `/v1/services/bulk_upsert` | No |
+| `functionality` | `/v1/functionalities/bulk_upsert` | No |
+| `environment` | `/v1/environments/bulk_upsert` | ≥1 must remain |
+| `team` | `/v1/teams/bulk_upsert` | ≥1 must remain |
+
+When `type` is omitted or `"catalog"`, entities sync to custom catalogs (existing behavior). Native resources use the same `fields` map — known attributes (description, color, pagerduty_id, etc.) are set directly; everything else goes to catalog properties.
 
 ### Environment variables
 

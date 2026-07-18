@@ -30,7 +30,9 @@ golangci-lint run ./...
 - `catalog.DesiredEntity` / `catalog.LiveEntity` are the shared entity types
 - Client uses `/v1/` API path (configurable via ROOTLY_API_URL + ROOTLY_API_PATH)
 - Entity properties come back as UUIDs — client resolves via field list
-- Safety: empty source bail, prune ratio threshold, delete-last ordering
+- Safety: empty source bail, prune ratio threshold, delete-last ordering, sentinel (env/team ≥1)
+- Native resources (service/functionality/environment/team) use `client/native.go`
+- Output `type` field routes to native bulk endpoints vs catalog entity endpoints
 - Template caching via sync.Map in tmpl package
 
 ## Environment
