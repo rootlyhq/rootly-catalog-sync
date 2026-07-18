@@ -106,6 +106,26 @@ jobs:
           # Empty source should abort — verify safety guard
           ./rootly-catalog-sync sync --allow-prune 2>&1 | grep -q "empty source" && echo "✓ empty source safety"
 
+          # Explain
+          ./rootly-catalog-sync explain ci-svc-1 | grep -q "noop" && echo "✓ explain"
+
+          # Plan freshness — create plan, change source, apply should detect stale
+          cat > catalog/services.yaml <<'EOF'
+          - id: ci-svc-1
+            name: CI Test Service A Updated
+            tier: "0"
+          EOF
+          ./rootly-catalog-sync plan
+          # Change source behind plan's back
+          cat > catalog/services.yaml <<'EOF'
+          - id: ci-svc-1
+            name: CI Test Service A Changed Again
+            tier: "0"
+          EOF
+          ./rootly-catalog-sync sync
+          # Now try to apply the OLD plan — should warn about staleness
+          ./rootly-catalog-sync apply .rootly-catalog-sync-plan-*.json 2>&1 | grep -q "stale\|Nothing to do" && echo "✓ plan freshness"
+
           echo ""
           echo "=== All catalog entity integration tests passed ==="
 
@@ -139,6 +159,59 @@ jobs:
           ./rootly-catalog-sync status --fail-on-drift && echo "✓ native service in sync"
           OUTPUT=$(./rootly-catalog-sync sync 2>&1)
           echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ native service idempotent"
+
+          # JSON output
+          ./rootly-catalog-sync status --output=json | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['counts']['Noop']==2"
+          echo "✓ native service json output"
+
+          # Update
+          cat > rootly-catalog-sync.yaml <<'EOF'
+          version: 1
+          sync_id: ci-native-svc
+          pipelines:
+            - sources:
+                - inline:
+                    entries:
+                      - id: ci-native-svc-1
+                        name: CI Native Service A Updated
+                        description: Updated description
+                      - id: ci-native-svc-2
+                        name: CI Native Service B
+                        description: Second test service
+              outputs:
+                - type: service
+                  external_id: "{{ .id }}"
+                  name: "{{ .name }}"
+                  fields:
+                    description: "{{ .description }}"
+          EOF
+          ./rootly-catalog-sync sync
+          echo "✓ native service update"
+
+          # Prune
+          cat > rootly-catalog-sync.yaml <<'EOF'
+          version: 1
+          sync_id: ci-native-svc
+          pipelines:
+            - sources:
+                - inline:
+                    entries:
+                      - id: ci-native-svc-1
+                        name: CI Native Service A Updated
+                        description: Updated description
+              outputs:
+                - type: service
+                  external_id: "{{ .id }}"
+                  name: "{{ .name }}"
+                  fields:
+                    description: "{{ .description }}"
+          EOF
+          ./rootly-catalog-sync sync --allow-prune --prune-threshold=1.0
+          echo "✓ native service prune"
+
+          # Explain
+          ./rootly-catalog-sync explain ci-native-svc-1 | grep -q "noop" && echo "✓ native service explain"
+
           echo "=== native services passed ==="
 
       - name: Integration — native functionalities
@@ -203,6 +276,22 @@ jobs:
           ./rootly-catalog-sync status --fail-on-drift && echo "✓ native environment in sync"
           OUTPUT=$(./rootly-catalog-sync sync 2>&1)
           echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ native environment idempotent"
+
+          # Sentinel guard — empty source should refuse to delete all
+          cat > rootly-catalog-sync.yaml <<'EOF'
+          version: 1
+          sync_id: ci-native-env-sentinel
+          pipelines:
+            - sources:
+                - inline:
+                    entries: []
+              outputs:
+                - type: environment
+                  external_id: "{{ .id }}"
+                  name: "{{ .name }}"
+          EOF
+          ./rootly-catalog-sync sync --allow-prune 2>&1 | grep -q "at least\|empty source" && echo "✓ environment sentinel guard"
+
           echo "=== native environments passed ==="
 
       - name: Integration — native teams
