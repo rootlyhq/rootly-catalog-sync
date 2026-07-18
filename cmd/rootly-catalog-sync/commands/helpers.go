@@ -96,6 +96,26 @@ func newApplier(cl *client.Client) *catalogsync.Applier {
 	}
 }
 
+func newNativeApplier(cl *client.Client, resourceType string) *catalogsync.Applier {
+	return &catalogsync.Applier{
+		BulkUpsert: func(ctx context.Context, _ string, ents []catalog.DesiredEntity) error {
+			_, err := cl.BulkUpsertNative(ctx, resourceType, ents)
+			return err
+		},
+		BulkDelete: func(ctx context.Context, _ string, externalIDs []string) error {
+			_, err := cl.BulkDeleteNative(ctx, resourceType, externalIDs)
+			return err
+		},
+	}
+}
+
+func applierForOutput(cl *client.Client, out config.Output) *catalogsync.Applier {
+	if client.IsNativeResource(out.Type) {
+		return newNativeApplier(cl, out.Type)
+	}
+	return newApplier(cl)
+}
+
 type reconcileOpts struct {
 	skipSafety bool
 }
@@ -132,24 +152,41 @@ func reconcileAll(ctx context.Context, cfg *config.Config, cl *client.Client, ba
 			if err != nil {
 				return nil, fmt.Errorf("mapping entries: %w", err)
 			}
-			catalogID, err := cl.EnsureCatalog(ctx, client.CatalogSpec{Name: out.Catalog})
-			if err != nil {
-				return nil, fmt.Errorf("ensuring catalog %q: %w", out.Catalog, err)
-			}
-			if err := ensureOutputFields(ctx, cl, catalogID, out); err != nil {
-				return nil, fmt.Errorf("ensuring fields: %w", err)
-			}
-			live, err := cl.ListEntities(ctx, catalogID)
-			if err != nil {
-				return nil, fmt.Errorf("listing entities: %w", err)
-			}
-			plan := catalogsync.Diff(out.Catalog, catalogID, live, desired, allowPrune)
-			if !ro.skipSafety {
-				if err := catalogsync.CheckSafety(plan, len(live), len(desired), pruneThreshold); err != nil {
-					return nil, fmt.Errorf("safety check failed: %w", err)
+
+			if client.IsNativeResource(out.Type) {
+				// Native resource path: skip catalog/field setup.
+				live, err := cl.ListNativeResources(ctx, out.Type)
+				if err != nil {
+					return nil, fmt.Errorf("listing %ss: %w", out.Type, err)
 				}
+				plan := catalogsync.Diff(out.Type, out.Type, live, desired, allowPrune)
+				if !ro.skipSafety {
+					if err := catalogsync.CheckNativeSafety(plan, out.Type, len(live), len(desired), pruneThreshold); err != nil {
+						return nil, fmt.Errorf("safety check failed: %w", err)
+					}
+				}
+				results = append(results, PlanResult{Plan: plan, CatalogID: out.Type, Output: out})
+			} else {
+				// Catalog entity path (original behavior).
+				catalogID, err := cl.EnsureCatalog(ctx, client.CatalogSpec{Name: out.Catalog})
+				if err != nil {
+					return nil, fmt.Errorf("ensuring catalog %q: %w", out.Catalog, err)
+				}
+				if err := ensureOutputFields(ctx, cl, catalogID, out); err != nil {
+					return nil, fmt.Errorf("ensuring fields: %w", err)
+				}
+				live, err := cl.ListEntities(ctx, catalogID)
+				if err != nil {
+					return nil, fmt.Errorf("listing entities: %w", err)
+				}
+				plan := catalogsync.Diff(out.Catalog, catalogID, live, desired, allowPrune)
+				if !ro.skipSafety {
+					if err := catalogsync.CheckSafety(plan, len(live), len(desired), pruneThreshold); err != nil {
+						return nil, fmt.Errorf("safety check failed: %w", err)
+					}
+				}
+				results = append(results, PlanResult{Plan: plan, CatalogID: catalogID, Output: out})
 			}
-			results = append(results, PlanResult{Plan: plan, CatalogID: catalogID, Output: out})
 		}
 	}
 	return results, nil

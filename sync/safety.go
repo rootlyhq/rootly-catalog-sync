@@ -21,3 +21,15 @@ func CheckSafety(plan *Plan, liveCount int, desiredCount int, pruneThreshold flo
 
 	return nil
 }
+
+// CheckNativeSafety applies extra guards for native resource types where the
+// API requires at least one record to remain (environments and teams).
+func CheckNativeSafety(plan *Plan, resourceType string, liveCount int, desiredCount int, pruneThreshold float64) error {
+	if (resourceType == "environment" || resourceType == "team") && desiredCount == 0 && liveCount > 0 {
+		return fmt.Errorf("refusing to delete all %ss — at least one must remain", resourceType)
+	}
+	if (resourceType == "environment" || resourceType == "team") && liveCount > 0 && plan.Counts.Delete >= liveCount {
+		return fmt.Errorf("refusing to delete all %ss — at least one must remain", resourceType)
+	}
+	return CheckSafety(plan, liveCount, desiredCount, pruneThreshold)
+}

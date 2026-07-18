@@ -89,17 +89,8 @@ func computeFieldDiffs(live catalog.LiveEntity, desired catalog.DesiredEntity) m
 		diffs["name"] = [2]string{live.Name, desired.Name}
 	}
 
-	allKeys := make(map[string]bool)
-	for k := range live.Fields {
-		allKeys[k] = true
-	}
-	for k := range desired.Fields {
-		allKeys[k] = true
-	}
-
-	for k := range allKeys {
+	for k, dv := range desired.Fields {
 		lv := live.Fields[k]
-		dv := desired.Fields[k]
 		if lv != dv {
 			diffs[k] = [2]string{lv, dv}
 		}

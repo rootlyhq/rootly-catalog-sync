@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rootlyhq/rootly-catalog-sync/catalog"
 	"github.com/rootlyhq/rootly-catalog-sync/client"
 	catalogsync "github.com/rootlyhq/rootly-catalog-sync/sync"
 )
@@ -49,7 +50,12 @@ func runApply(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate that the plan still matches live state.
-	live, err := cl.ListEntities(ctx, plan.CatalogID)
+	var live []catalog.LiveEntity
+	if client.IsNativeResource(plan.CatalogID) {
+		live, err = cl.ListNativeResources(ctx, plan.CatalogID)
+	} else {
+		live, err = cl.ListEntities(ctx, plan.CatalogID)
+	}
 	if err != nil {
 		return fmt.Errorf("fetching live entities for freshness check: %w", err)
 	}
@@ -69,7 +75,12 @@ func runApply(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	applier := newApplier(cl)
+	var applier *catalogsync.Applier
+	if client.IsNativeResource(plan.CatalogID) {
+		applier = newNativeApplier(cl, plan.CatalogID)
+	} else {
+		applier = newApplier(cl)
+	}
 
 	if err := applier.Apply(ctx, plan); err != nil {
 		return fmt.Errorf("applying plan: %w", err)

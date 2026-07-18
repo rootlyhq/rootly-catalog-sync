@@ -66,7 +66,7 @@ func runSyncOnce(ctx context.Context, cfg *config.Config, cl *client.Client, bas
 
 		catalogsync.FormatPlan(os.Stdout, r.Plan)
 
-		applier := newApplier(cl)
+		applier := applierForOutput(cl, r.Output)
 		if err := applier.Apply(ctx, r.Plan); err != nil {
 			return fmt.Errorf("applying: %w", err)
 		}

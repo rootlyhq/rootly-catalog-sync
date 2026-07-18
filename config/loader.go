@@ -213,7 +213,8 @@ func Validate(cfg *Config) error {
 			return fmt.Errorf("pipeline[%d]: at least one output is required", i)
 		}
 		for j, o := range p.Outputs {
-			if o.Catalog == "" {
+			isNative := o.Type != "" && o.Type != "catalog"
+			if !isNative && o.Catalog == "" {
 				return fmt.Errorf("pipeline[%d].outputs[%d]: catalog is required", i, j)
 			}
 			if o.ExternalID == "" {

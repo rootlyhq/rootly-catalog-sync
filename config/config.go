@@ -85,6 +85,7 @@ type CSVSourceConfig struct {
 }
 
 type Output struct {
+	Type        string            `yaml:"type,omitempty" json:"type,omitempty" hcl:"type,optional"`
 	Catalog     string            `yaml:"catalog" json:"catalog" hcl:"catalog"`
 	ExternalID  string            `yaml:"external_id" json:"external_id" hcl:"external_id"`
 	Name        string            `yaml:"name" json:"name" hcl:"name"`

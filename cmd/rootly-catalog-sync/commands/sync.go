@@ -51,7 +51,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		applier := newApplier(cl)
+		applier := applierForOutput(cl, r.Output)
 		if err := applier.Apply(ctx, r.Plan); err != nil {
 			return fmt.Errorf("applying: %w", err)
 		}

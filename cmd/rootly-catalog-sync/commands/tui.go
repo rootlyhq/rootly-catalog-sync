@@ -34,7 +34,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	sourceInfo := fmt.Sprintf("%s • %d source(s) from %d pipeline(s)", configPath, totalEntries(cfg), len(cfg.Pipelines))
 
 	for _, r := range results {
-		applier := newApplier(cl)
+		applier := applierForOutput(cl, r.Output)
 		applyFn := func(p *catalogsync.Plan) error {
 			return applier.Apply(ctx, p)
 		}

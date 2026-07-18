@@ -9,8 +9,8 @@ require (
 	github.com/google/go-github/v72 v72.0.0
 	github.com/google/go-jsonnet v0.22.0
 	github.com/hashicorp/hcl/v2 v2.24.0
-	github.com/oapi-codegen/nullable v1.1.0
-	github.com/rootlyhq/rootly-go v0.11.0
+	github.com/oapi-codegen/nullable v1.2.0
+	github.com/rootlyhq/rootly-go v0.12.0
 	github.com/spf13/cobra v1.10.2
 	github.com/zclconf/go-cty v1.18.1
 	golang.org/x/oauth2 v0.36.0
@@ -48,7 +48,7 @@ require (
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
-	github.com/oapi-codegen/runtime v1.4.1 // indirect
+	github.com/oapi-codegen/runtime v1.4.2 // indirect
 	github.com/oasdiff/yaml v0.1.0 // indirect
 	github.com/oasdiff/yaml3 v0.0.13 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
