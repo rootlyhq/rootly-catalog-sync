@@ -114,10 +114,9 @@ jobs:
           ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
         run: |
           set -euo pipefail
-
           cat > rootly-catalog-sync.yaml <<'EOF'
           version: 1
-          sync_id: ci-native-test
+          sync_id: ci-native-svc
           pipelines:
             - sources:
                 - inline:
@@ -127,7 +126,7 @@ jobs:
                         description: Integration test service
                       - id: ci-native-svc-2
                         name: CI Native Service B
-                        description: Second integration test service
+                        description: Second test service
               outputs:
                 - type: service
                   external_id: "{{ .id }}"
@@ -135,18 +134,105 @@ jobs:
                   fields:
                     description: "{{ .description }}"
           EOF
-
-          # Sync native services
           ./rootly-catalog-sync sync
-          echo "✓ native service sync (create)"
-
-          # Status (should be in sync)
-          ./rootly-catalog-sync status --fail-on-drift && echo "✓ native status (in sync)"
-
-          # Idempotent
+          echo "✓ native service create"
+          ./rootly-catalog-sync status --fail-on-drift && echo "✓ native service in sync"
           OUTPUT=$(./rootly-catalog-sync sync 2>&1)
-          echo "$OUTPUT" | grep -q "Already in sync"
-          echo "✓ native idempotent re-sync"
+          echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ native service idempotent"
+          echo "=== native services passed ==="
 
-          echo ""
-          echo "=== All native resource integration tests passed ==="
+      - name: Integration — native functionalities
+        env:
+          ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
+        run: |
+          set -euo pipefail
+          cat > rootly-catalog-sync.yaml <<'EOF'
+          version: 1
+          sync_id: ci-native-func
+          pipelines:
+            - sources:
+                - inline:
+                    entries:
+                      - id: ci-native-func-1
+                        name: CI Checkout Flow
+                        description: Integration test functionality
+                      - id: ci-native-func-2
+                        name: CI User Auth
+                        description: Second test functionality
+              outputs:
+                - type: functionality
+                  external_id: "{{ .id }}"
+                  name: "{{ .name }}"
+                  fields:
+                    description: "{{ .description }}"
+          EOF
+          ./rootly-catalog-sync sync
+          echo "✓ native functionality create"
+          ./rootly-catalog-sync status --fail-on-drift && echo "✓ native functionality in sync"
+          OUTPUT=$(./rootly-catalog-sync sync 2>&1)
+          echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ native functionality idempotent"
+          echo "=== native functionalities passed ==="
+
+      - name: Integration — native environments
+        env:
+          ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
+        run: |
+          set -euo pipefail
+          cat > rootly-catalog-sync.yaml <<'EOF'
+          version: 1
+          sync_id: ci-native-env
+          pipelines:
+            - sources:
+                - inline:
+                    entries:
+                      - id: ci-native-env-1
+                        name: CI Staging
+                        description: Integration test environment
+                      - id: ci-native-env-2
+                        name: CI Production
+                        description: Second test environment
+              outputs:
+                - type: environment
+                  external_id: "{{ .id }}"
+                  name: "{{ .name }}"
+                  fields:
+                    description: "{{ .description }}"
+          EOF
+          ./rootly-catalog-sync sync
+          echo "✓ native environment create"
+          ./rootly-catalog-sync status --fail-on-drift && echo "✓ native environment in sync"
+          OUTPUT=$(./rootly-catalog-sync sync 2>&1)
+          echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ native environment idempotent"
+          echo "=== native environments passed ==="
+
+      - name: Integration — native teams
+        env:
+          ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
+        run: |
+          set -euo pipefail
+          cat > rootly-catalog-sync.yaml <<'EOF'
+          version: 1
+          sync_id: ci-native-team
+          pipelines:
+            - sources:
+                - inline:
+                    entries:
+                      - id: ci-native-team-1
+                        name: CI Platform Team
+                        description: Integration test team
+                      - id: ci-native-team-2
+                        name: CI Security Team
+                        description: Second test team
+              outputs:
+                - type: team
+                  external_id: "{{ .id }}"
+                  name: "{{ .name }}"
+                  fields:
+                    description: "{{ .description }}"
+          EOF
+          ./rootly-catalog-sync sync
+          echo "✓ native team create"
+          ./rootly-catalog-sync status --fail-on-drift && echo "✓ native team in sync"
+          OUTPUT=$(./rootly-catalog-sync sync 2>&1)
+          echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ native team idempotent"
+          echo "=== native teams passed ==="
