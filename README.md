@@ -14,10 +14,7 @@ A CLI tool that reconciles external sources of truth into [Rootly's Catalog](htt
   - [Simple (local YAML files)](docs/examples/simple/) — start here
   - [Backstage](docs/examples/backstage/) — sync from Backstage catalog
   - [GitHub](docs/examples/github/) — sync from GitHub org repositories
-  - [Native Services](docs/examples/native-services/) — sync to native Rootly services
-  - [Native Functionalities](docs/examples/native-functionalities/) — sync functionalities
-  - [Native Environments](docs/examples/native-environments/) — sync environments (sentinel: ≥1)
-  - [Native Teams](docs/examples/native-teams/) — sync teams/groups (sentinel: ≥1)
+  - [Native Resources](docs/examples/native/) — sync services, functionalities, environments, teams
 
 ## Install
 

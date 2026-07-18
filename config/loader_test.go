@@ -368,3 +368,51 @@ func TestValidateMissingOutput(t *testing.T) {
 		t.Fatal("expected error for missing output")
 	}
 }
+
+func TestValidateNativeType(t *testing.T) {
+	// A native type (e.g., "service") with no catalog field should pass validation.
+	cfg := &Config{
+		Version: 1,
+		SyncID:  "test",
+		Pipelines: []Pipeline{
+			{
+				Sources: []SourceConfig{{Local: &LocalSourceConfig{Files: []string{"*.yaml"}}}},
+				Outputs: []Output{{
+					Type:       "service",
+					ExternalID: "{{ .name }}",
+					Name:       "{{ .name }}",
+				}},
+			},
+		},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Errorf("expected no error for native type 'service', got: %v", err)
+	}
+}
+
+func TestValidateInvalidType(t *testing.T) {
+	// NOTE: There is currently no type validation — any non-empty Type string
+	// is treated as a native type. An output with type "invalid" passes
+	// validation because the Validate function only checks that catalog is
+	// present when type is empty or "catalog". This is a coverage gap: invalid
+	// type names are not rejected at config validation time.
+	cfg := &Config{
+		Version: 1,
+		SyncID:  "test",
+		Pipelines: []Pipeline{
+			{
+				Sources: []SourceConfig{{Local: &LocalSourceConfig{Files: []string{"*.yaml"}}}},
+				Outputs: []Output{{
+					Type:       "invalid",
+					ExternalID: "{{ .name }}",
+					Name:       "{{ .name }}",
+				}},
+			},
+		},
+	}
+	err := Validate(cfg)
+	// This currently passes — documenting that no type validation exists.
+	if err != nil {
+		t.Errorf("unexpected error (type validation may have been added): %v", err)
+	}
+}
