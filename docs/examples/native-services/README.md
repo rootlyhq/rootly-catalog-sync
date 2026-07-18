@@ -1,25 +1,10 @@
 # Native Services Example
 
-Sync services directly to Rootly's native Services resource (not custom catalog entities).
-
-## Data file
-
-```yaml
-# services.yaml
-- id: payments-api
-  name: Payments API
-  description: Handles all payment processing
-  pagerduty_id: P123ABC
-
-- id: auth-service
-  name: Auth Service
-  description: Authentication and authorization
-```
+Sync services directly to Rootly's native Services resource.
 
 ## Config
 
 ```yaml
-# rootly-catalog-sync.yaml
 version: 1
 sync_id: native-services
 pipelines:
@@ -35,24 +20,29 @@ pipelines:
           pagerduty_id: "{{ .pagerduty_id }}"
 ```
 
+## Data file
+
+```yaml
+# services.yaml
+- id: payments-api
+  name: Payments API
+  description: Handles all payment processing
+  pagerduty_id: P123ABC
+
+- id: auth-service
+  name: Auth Service
+  description: Authentication and authorization
+```
+
 ## Usage
 
 ```bash
 export ROOTLY_API_KEY=rootly_...
-
-# Preview
-rootly-catalog-sync plan
-
-# Apply
-rootly-catalog-sync sync
-
-# Check
-rootly-catalog-sync status
+rootly-catalog-sync plan    # preview
+rootly-catalog-sync sync    # apply
+rootly-catalog-sync status  # verify
 ```
 
-## Notes
+## Supported fields
 
-- `type: service` targets the native Services endpoint (`/v1/services/bulk_upsert`)
-- Known attributes (`description`, `pagerduty_id`, `color`, etc.) are set directly on the service
-- Any other fields in `fields:` map to catalog properties on the service
-- No `catalog` field needed — native resources don't belong to a custom catalog
+`description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opsgenie_team_id`, `opslevel_id`, `pagerduty_id`, `service_now_ci_sys_id`, `github_repository_name`, `github_repository_branch`, `gitlab_repository_name`, `gitlab_repository_branch`, `kubernetes_deployment_name`, `alerts_email_enabled`, `notify_emails`
