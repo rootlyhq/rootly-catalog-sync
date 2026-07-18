@@ -19,7 +19,6 @@ jobs:
           cache: true
       - run: go build -o rootly-catalog-sync ./cmd/rootly-catalog-sync
       - name: Integration — catalog entities
-        continue-on-error: true
         env:
           ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
         run: |
