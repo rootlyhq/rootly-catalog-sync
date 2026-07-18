@@ -297,3 +297,75 @@ func TestSavePlanLoadPlan(t *testing.T) {
 		t.Errorf("plan file should exist: %v", err)
 	}
 }
+
+func TestDiff_ManagedFieldsOnly(t *testing.T) {
+	// Live entity has fields the desired doesn't mention.
+	// Those unmanaged fields should NOT cause an update.
+	live := []catalog.LiveEntity{
+		{ExternalID: "svc-1", Name: "Service A", Fields: map[string]string{
+			"description": "desc", "color": "#fff", "pagerduty_id": "PD123",
+		}},
+	}
+	desired := []catalog.DesiredEntity{
+		{ExternalID: "svc-1", Name: "Service A", Fields: map[string]string{
+			"description": "desc",
+		}},
+	}
+	plan := Diff("test", "t1", live, desired, false)
+	if plan.Counts.Noop != 1 {
+		t.Errorf("expected 1 noop (unmanaged fields ignored), got %d noops, %d updates", plan.Counts.Noop, plan.Counts.Update)
+	}
+}
+
+func TestDiff_ManagedFieldChanged(t *testing.T) {
+	live := []catalog.LiveEntity{
+		{ExternalID: "svc-1", Name: "Service A", Fields: map[string]string{
+			"description": "old desc", "color": "#fff",
+		}},
+	}
+	desired := []catalog.DesiredEntity{
+		{ExternalID: "svc-1", Name: "Service A", Fields: map[string]string{
+			"description": "new desc",
+		}},
+	}
+	plan := Diff("test", "t1", live, desired, false)
+	if plan.Counts.Update != 1 {
+		t.Errorf("expected 1 update for managed field change, got %d", plan.Counts.Update)
+	}
+	if plan.Changes[0].FieldDiffs["description"] != [2]string{"old desc", "new desc"} {
+		t.Errorf("unexpected diff: %v", plan.Changes[0].FieldDiffs)
+	}
+	// color should NOT be in diffs (not managed)
+	if _, has := plan.Changes[0].FieldDiffs["color"]; has {
+		t.Error("color should not appear in diffs — not a managed field")
+	}
+}
+
+func TestCheckNativeSafety_SentinelEnvironment(t *testing.T) {
+	plan := &Plan{Counts: Counts{Delete: 3}}
+	err := CheckNativeSafety(plan, "environment", 3, 0, 0.5)
+	if err == nil {
+		t.Fatal("expected error refusing to delete all environments")
+	}
+	if !strings.Contains(err.Error(), "at least one must remain") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestCheckNativeSafety_SentinelTeam(t *testing.T) {
+	plan := &Plan{Counts: Counts{Delete: 1}}
+	err := CheckNativeSafety(plan, "team", 1, 0, 0.5)
+	if err == nil {
+		t.Fatal("expected error refusing to delete all teams")
+	}
+}
+
+func TestCheckNativeSafety_ServiceNoSentinel(t *testing.T) {
+	plan := &Plan{Counts: Counts{Delete: 5}}
+	// Services have no sentinel — can delete all (if prune ratio allows)
+	err := CheckNativeSafety(plan, "service", 5, 0, 1.0)
+	// Should fail on empty source, not sentinel
+	if err == nil {
+		t.Fatal("expected error for empty source")
+	}
+}
