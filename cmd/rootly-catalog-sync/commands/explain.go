@@ -55,20 +55,34 @@ func runExplain(cmd *cobra.Command, args []string) error {
 			}
 
 			fmt.Printf("Entry: %s\n", targetID)
-			fmt.Printf("  Catalog: %s\n", out.Catalog)
+			if client.IsNativeResource(out.Type) {
+				fmt.Printf("  Type: %s\n", out.Type)
+			} else {
+				fmt.Printf("  Catalog: %s\n", out.Catalog)
+			}
 			fmt.Printf("  Name:    %s\n", found.Name)
 			for k, v := range found.Fields {
 				fmt.Printf("  Field %s: %s\n", k, v)
 			}
 
-			catalogID, err := cl.EnsureCatalog(ctx, client.CatalogSpec{Name: out.Catalog})
-			if err != nil {
-				return fmt.Errorf("ensuring catalog %q: %w", out.Catalog, err)
-			}
-
-			live, err := cl.ListEntities(ctx, catalogID)
-			if err != nil {
-				return fmt.Errorf("listing entities: %w", err)
+			var live []catalog.LiveEntity
+			var targetLabel string
+			if client.IsNativeResource(out.Type) {
+				live, err = cl.ListNativeResources(ctx, out.Type)
+				if err != nil {
+					return fmt.Errorf("listing %ss: %w", out.Type, err)
+				}
+				targetLabel = out.Type
+			} else {
+				catalogID, err := cl.EnsureCatalog(ctx, client.CatalogSpec{Name: out.Catalog})
+				if err != nil {
+					return fmt.Errorf("ensuring catalog %q: %w", out.Catalog, err)
+				}
+				live, err = cl.ListEntities(ctx, catalogID)
+				if err != nil {
+					return fmt.Errorf("listing entities: %w", err)
+				}
+				targetLabel = out.Catalog
 			}
 
 			reconciledDesired := []catalog.DesiredEntity{{
@@ -77,7 +91,7 @@ func runExplain(cmd *cobra.Command, args []string) error {
 				Fields:     found.Fields,
 			}}
 
-			plan := catalogsync.Diff(out.Catalog, catalogID, live, reconciledDesired, true)
+			plan := catalogsync.Diff(targetLabel, targetLabel, live, reconciledDesired, true)
 
 			for _, ch := range plan.Changes {
 				if ch.ExternalID != targetID {
