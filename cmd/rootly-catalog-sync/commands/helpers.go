@@ -161,7 +161,11 @@ func reconcileAll(ctx context.Context, cfg *config.Config, cl *client.Client, ba
 				}
 				plan := catalogsync.Diff(out.Type, out.Type, live, desired, allowPrune)
 				if !ro.skipSafety {
-					if err := catalogsync.CheckNativeSafety(plan, out.Type, len(live), len(desired), pruneThreshold); err != nil {
+					minKeep := 0
+					if out.Type == "environment" || out.Type == "team" {
+						minKeep = 1
+					}
+					if err := catalogsync.CheckSafety(plan, len(live), len(desired), pruneThreshold, minKeep); err != nil {
 						return nil, fmt.Errorf("safety check failed: %w", err)
 					}
 				}

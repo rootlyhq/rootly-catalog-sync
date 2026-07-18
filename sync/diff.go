@@ -42,8 +42,6 @@ func Diff(catalogName string, catalogID string, live []catalog.LiveEntity, desir
 			noops = append(noops, Change{
 				Op:         OpNoop,
 				ExternalID: d.ExternalID,
-				Before:     ptr2(l),
-				After:      ptr(d),
 			})
 		}
 	}
@@ -83,15 +81,19 @@ func Diff(catalogName string, catalogID string, live []catalog.LiveEntity, desir
 }
 
 func computeFieldDiffs(live catalog.LiveEntity, desired catalog.DesiredEntity) map[string][2]string {
-	diffs := make(map[string][2]string)
+	var diffs map[string][2]string
 
 	if live.Name != desired.Name {
+		diffs = make(map[string][2]string)
 		diffs["name"] = [2]string{live.Name, desired.Name}
 	}
 
 	for k, dv := range desired.Fields {
 		lv := live.Fields[k]
 		if lv != dv {
+			if diffs == nil {
+				diffs = make(map[string][2]string)
+			}
 			diffs[k] = [2]string{lv, dv}
 		}
 	}

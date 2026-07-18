@@ -4,7 +4,23 @@ import "fmt"
 
 const DefaultPruneThreshold = 0.2
 
-func CheckSafety(plan *Plan, liveCount int, desiredCount int, pruneThreshold float64) error {
+// CheckSafety validates a plan against safety guards.
+// minEntities > 0 prevents deleting all records (e.g. environments/teams must keep ≥1).
+func CheckSafety(plan *Plan, liveCount int, desiredCount int, pruneThreshold float64, minEntities ...int) error {
+	minKeep := 0
+	if len(minEntities) > 0 {
+		minKeep = minEntities[0]
+	}
+
+	if minKeep > 0 && liveCount > 0 {
+		if desiredCount == 0 {
+			return fmt.Errorf("refusing to delete all entries — at least %d must remain", minKeep)
+		}
+		if plan.Counts.Delete >= liveCount {
+			return fmt.Errorf("refusing to delete all entries — at least %d must remain", minKeep)
+		}
+	}
+
 	if desiredCount == 0 && liveCount > 0 {
 		return fmt.Errorf("empty source: refusing to delete all %d live entities — source returned 0 entries", liveCount)
 	}
@@ -20,16 +36,4 @@ func CheckSafety(plan *Plan, liveCount int, desiredCount int, pruneThreshold flo
 	}
 
 	return nil
-}
-
-// CheckNativeSafety applies extra guards for native resource types where the
-// API requires at least one record to remain (environments and teams).
-func CheckNativeSafety(plan *Plan, resourceType string, liveCount int, desiredCount int, pruneThreshold float64) error {
-	if (resourceType == "environment" || resourceType == "team") && desiredCount == 0 && liveCount > 0 {
-		return fmt.Errorf("refusing to delete all %ss — at least one must remain", resourceType)
-	}
-	if (resourceType == "environment" || resourceType == "team") && liveCount > 0 && plan.Counts.Delete >= liveCount {
-		return fmt.Errorf("refusing to delete all %ss — at least one must remain", resourceType)
-	}
-	return CheckSafety(plan, liveCount, desiredCount, pruneThreshold)
 }

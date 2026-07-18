@@ -428,19 +428,12 @@ func (c *Client) BulkUpsert(ctx context.Context, catalogID string, ents []catalo
 			return nil, fmt.Errorf("bulk upsert: %w", err)
 		}
 
-		// The SDK response type for 200 returns a JSON:API list of entities,
-		// but our old code expected {"succeeded": N, "errors": [...]}.
-		// Parse the raw body to maintain backward compatibility.
-		var batchResult struct {
-			Succeeded int         `json:"succeeded"`
-			Errors    []BulkError `json:"errors"`
+		br, err := parseBulkUpsertResponse(resp.Body)
+		if err != nil {
+			return nil, err
 		}
-		if err := json.Unmarshal(resp.Body, &batchResult); err != nil {
-			return nil, fmt.Errorf("decoding bulk upsert response: %w", err)
-		}
-
-		result.Succeeded += batchResult.Succeeded
-		result.Errors = append(result.Errors, batchResult.Errors...)
+		result.Succeeded += br.Succeeded
+		result.Errors = append(result.Errors, br.Errors...)
 	}
 
 	return result, nil
@@ -473,16 +466,12 @@ func (c *Client) BulkDelete(ctx context.Context, catalogID string, externalIDs [
 			result.DeletedExternalIDs = append(result.DeletedExternalIDs, resp.ApplicationVndAPIJSON200.Data.DeletedExternalIDs...)
 			result.NotFoundExternalIDs = append(result.NotFoundExternalIDs, resp.ApplicationVndAPIJSON200.Data.NotFoundExternalIDs...)
 		} else {
-			// Fallback: parse raw body for backward compatibility with test servers.
-			var batchResult struct {
-				DeletedExternalIDs  []string `json:"deleted_external_ids"`
-				NotFoundExternalIDs []string `json:"not_found_external_ids"`
+			br, err := parseBulkDeleteResponse(resp.Body)
+			if err != nil {
+				return nil, err
 			}
-			if err := json.Unmarshal(resp.Body, &batchResult); err != nil {
-				return nil, fmt.Errorf("decoding bulk delete response: %w", err)
-			}
-			result.DeletedExternalIDs = append(result.DeletedExternalIDs, batchResult.DeletedExternalIDs...)
-			result.NotFoundExternalIDs = append(result.NotFoundExternalIDs, batchResult.NotFoundExternalIDs...)
+			result.DeletedExternalIDs = append(result.DeletedExternalIDs, br.DeletedExternalIDs...)
+			result.NotFoundExternalIDs = append(result.NotFoundExternalIDs, br.NotFoundExternalIDs...)
 		}
 	}
 

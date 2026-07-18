@@ -341,30 +341,29 @@ func TestDiff_ManagedFieldChanged(t *testing.T) {
 	}
 }
 
-func TestCheckNativeSafety_SentinelEnvironment(t *testing.T) {
+func TestCheckSafety_SentinelMinEntities(t *testing.T) {
 	plan := &Plan{Counts: Counts{Delete: 3}}
-	err := CheckNativeSafety(plan, "environment", 3, 0, 0.5)
+	err := CheckSafety(plan, 3, 0, 0.5, 1)
 	if err == nil {
-		t.Fatal("expected error refusing to delete all environments")
+		t.Fatal("expected error refusing to delete all entries")
 	}
-	if !strings.Contains(err.Error(), "at least one must remain") {
+	if !strings.Contains(err.Error(), "at least 1 must remain") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
 
-func TestCheckNativeSafety_SentinelTeam(t *testing.T) {
+func TestCheckSafety_SentinelDeleteAll(t *testing.T) {
 	plan := &Plan{Counts: Counts{Delete: 1}}
-	err := CheckNativeSafety(plan, "team", 1, 0, 0.5)
+	err := CheckSafety(plan, 1, 0, 0.5, 1)
 	if err == nil {
-		t.Fatal("expected error refusing to delete all teams")
+		t.Fatal("expected error refusing to delete all entries")
 	}
 }
 
-func TestCheckNativeSafety_ServiceNoSentinel(t *testing.T) {
+func TestCheckSafety_NoSentinel(t *testing.T) {
 	plan := &Plan{Counts: Counts{Delete: 5}}
-	// Services have no sentinel — can delete all (if prune ratio allows)
-	err := CheckNativeSafety(plan, "service", 5, 0, 1.0)
-	// Should fail on empty source, not sentinel
+	// No minEntities — should fail on empty source, not sentinel
+	err := CheckSafety(plan, 5, 0, 1.0)
 	if err == nil {
 		t.Fatal("expected error for empty source")
 	}
