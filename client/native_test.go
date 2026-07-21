@@ -23,7 +23,7 @@ func TestListNativeResources_Services(t *testing.T) {
 				"data": []map[string]any{
 					{
 						"id":   "svc-1",
-						"type": "services",
+						"type": pluralServices,
 						"attributes": map[string]any{
 							"name":        "Auth Service",
 							"external_id": "ext-auth",
@@ -35,7 +35,7 @@ func TestListNativeResources_Services(t *testing.T) {
 					},
 					{
 						"id":   "svc-2",
-						"type": "services",
+						"type": pluralServices,
 						"attributes": map[string]any{
 							"name":         "API Gateway",
 							"external_id":  "ext-api",
@@ -55,7 +55,7 @@ func TestListNativeResources_Services(t *testing.T) {
 			"data": []map[string]any{
 				{
 					"id":   "svc-3",
-					"type": "services",
+					"type": pluralServices,
 					"attributes": map[string]any{
 						"name":        "Billing",
 						"external_id": "ext-billing",
@@ -119,7 +119,7 @@ func TestBulkUpsertNative_Services(t *testing.T) {
 		data := make([]map[string]any, len(entities))
 		for i, e := range entities {
 			ent := e.(map[string]any)
-			data[i] = map[string]any{"id": fmt.Sprintf("id-%d", i), "type": "services", "attributes": ent}
+			data[i] = map[string]any{"id": fmt.Sprintf("id-%d", i), "type": pluralServices, "attributes": ent}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": data,

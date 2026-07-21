@@ -20,6 +20,11 @@ const (
 	NativeFunctionality = "functionality"
 	NativeEnvironment   = "environment"
 	NativeTeam          = "team"
+
+	pluralServices        = "services"
+	pluralFunctionalities = "functionalities"
+	pluralEnvironments    = "environments"
+	pluralTeams           = "teams"
 )
 
 // Known attribute key constants (used in multiple places).
@@ -81,13 +86,13 @@ func IsNativeResource(t string) bool {
 func resourceTypePlural(t string) string {
 	switch t {
 	case NativeService:
-		return "services"
+		return pluralServices
 	case NativeFunctionality:
-		return "functionalities"
+		return pluralFunctionalities
 	case NativeEnvironment:
-		return "environments"
+		return pluralEnvironments
 	case NativeTeam:
-		return "teams"
+		return pluralTeams
 	}
 	return t + "s"
 }
