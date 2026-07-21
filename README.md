@@ -286,7 +286,7 @@ outputs:
 | `environment` | `/v1/environments/bulk_upsert` | ≥1 must remain |
 | `team` | `/v1/teams/bulk_upsert` | ≥1 must remain |
 
-When `type` is omitted or `"catalog"`, entities sync to custom catalogs (existing behavior). Native resources use the same `fields` map — known attributes (description, color, pagerduty_id, etc.) are set directly; everything else goes to catalog properties.
+When `type` is omitted or `"catalog"`, entities sync to custom catalogs (existing behavior). Native resources only support known attributes (description, color, pagerduty_id, etc.) — see [Native Resources](docs/examples/native/) for the full list per type.
 
 ### Environment variables
 
