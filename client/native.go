@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/oapi-codegen/nullable"
 	rootly "github.com/rootlyhq/rootly-go"
@@ -384,6 +386,10 @@ func (c *Client) BulkUpsertNative(ctx context.Context, resourceType string, ents
 		return nil, fmt.Errorf("unsupported native resource type: %s", resourceType)
 	}
 
+	if err := validateNativeFields(resourceType, ents); err != nil {
+		return nil, err
+	}
+
 	result := &BulkResult{}
 	for i := 0; i < len(ents); i += MaxBatchSize {
 		end := i + MaxBatchSize
@@ -417,6 +423,33 @@ func (c *Client) bulkUpsertNativeBatch(ctx context.Context, resourceType string,
 	default:
 		return nil, fmt.Errorf("unsupported native resource type: %s", resourceType)
 	}
+}
+
+func validateNativeFields(resourceType string, ents []catalog.DesiredEntity) error {
+	known := nativeKnownAttrs[resourceType]
+	unsupported := make(map[string]bool)
+	for _, e := range ents {
+		for k := range e.Fields {
+			if !known[k] {
+				unsupported[k] = true
+			}
+		}
+	}
+	if len(unsupported) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(unsupported))
+	for k := range unsupported {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	supported := make([]string, 0, len(known))
+	for k := range known {
+		supported = append(supported, k)
+	}
+	sort.Strings(supported)
+	return fmt.Errorf("unsupported fields for native %s: %s\n  Supported fields: %s\n  Hint: for custom fields, use catalog entities (catalog: \"Name\") instead of native resources (type: %s)",
+		resourceType, strings.Join(names, ", "), strings.Join(supported, ", "), resourceType)
 }
 
 // catalogFields builds the Fields array for any fields not in the known attrs set.
@@ -493,7 +526,7 @@ func (c *Client) bulkUpsertServices(ctx context.Context, batch []catalog.Desired
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("service"), err)
 	}
-	return parseBulkUpsertResponse(resp.Body)
+	return parseBulkUpsertResponse(resp.StatusCode(), resp.Body)
 }
 
 func setServiceAttrs(ent *struct {
@@ -624,7 +657,7 @@ func (c *Client) bulkUpsertFunctionalities(ctx context.Context, batch []catalog.
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("functionality"), err)
 	}
-	return parseBulkUpsertResponse(resp.Body)
+	return parseBulkUpsertResponse(resp.StatusCode(), resp.Body)
 }
 
 func (c *Client) bulkUpsertEnvironments(ctx context.Context, batch []catalog.DesiredEntity, known map[string]bool) (*BulkResult, error) {
@@ -665,7 +698,7 @@ func (c *Client) bulkUpsertEnvironments(ctx context.Context, batch []catalog.Des
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("environment"), err)
 	}
-	return parseBulkUpsertResponse(resp.Body)
+	return parseBulkUpsertResponse(resp.StatusCode(), resp.Body)
 }
 
 func (c *Client) bulkUpsertTeams(ctx context.Context, batch []catalog.DesiredEntity, known map[string]bool) (*BulkResult, error) {
@@ -737,19 +770,22 @@ func (c *Client) bulkUpsertTeams(ctx context.Context, batch []catalog.DesiredEnt
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("team"), err)
 	}
-	return parseBulkUpsertResponse(resp.Body)
+	return parseBulkUpsertResponse(resp.StatusCode(), resp.Body)
 }
 
-func parseBulkUpsertResponse(body []byte) (*BulkResult, error) {
+func parseBulkUpsertResponse(statusCode int, body []byte) (*BulkResult, error) {
 	var parsed struct {
-		Succeeded int         `json:"succeeded"`
-		Errors    []BulkError `json:"errors"`
+		Data   []json.RawMessage `json:"data"`
+		Errors []BulkError       `json:"errors"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("decoding bulk upsert response: %w", err)
+		return nil, fmt.Errorf("decoding bulk upsert response (status %d): %w: %s", statusCode, err, body)
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		return nil, fmt.Errorf("bulk upsert failed (status %d): %s", statusCode, body)
 	}
 	return &BulkResult{
-		Succeeded: parsed.Succeeded,
+		Succeeded: len(parsed.Data),
 		Errors:    parsed.Errors,
 	}, nil
 }

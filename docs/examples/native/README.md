@@ -72,4 +72,4 @@ rootly-catalog-sync status  # verify
 
 **Teams:** `description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opslevel_id`, `pagerduty_id`, `pagerduty_service_id`, `pagertree_id`, `victor_ops_id`, `service_now_ci_sys_id`, `alerts_email_enabled`
 
-Any field not in these lists is routed to catalog properties on the resource.
+Only fields in these lists are supported for native resources. For custom fields like `owner` or `tier`, use catalog entities instead (`catalog: "Services"`).

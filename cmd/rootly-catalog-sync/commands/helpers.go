@@ -83,11 +83,24 @@ func loadSources(ctx context.Context, pipeline config.Pipeline, baseDir string) 
 	return all, nil
 }
 
+func checkBulkResult(result *client.BulkResult, expected int, action string) error {
+	if len(result.Errors) > 0 {
+		return fmt.Errorf("bulk %s: %d succeeded, %d errors: %v", action, result.Succeeded, len(result.Errors), result.Errors)
+	}
+	if result.Succeeded != expected {
+		return fmt.Errorf("bulk %s: expected %d succeeded, got %d", action, expected, result.Succeeded)
+	}
+	return nil
+}
+
 func newApplier(cl *client.Client) *catalogsync.Applier {
 	return &catalogsync.Applier{
 		BulkUpsert: func(ctx context.Context, catalogID string, ents []catalog.DesiredEntity) error {
-			_, err := cl.BulkUpsert(ctx, catalogID, ents)
-			return err
+			result, err := cl.BulkUpsert(ctx, catalogID, ents)
+			if err != nil {
+				return err
+			}
+			return checkBulkResult(result, len(ents), "upsert")
 		},
 		BulkDelete: func(ctx context.Context, catalogID string, externalIDs []string) error {
 			_, err := cl.BulkDelete(ctx, catalogID, externalIDs)
@@ -99,8 +112,11 @@ func newApplier(cl *client.Client) *catalogsync.Applier {
 func newNativeApplier(cl *client.Client, resourceType string) *catalogsync.Applier {
 	return &catalogsync.Applier{
 		BulkUpsert: func(ctx context.Context, _ string, ents []catalog.DesiredEntity) error {
-			_, err := cl.BulkUpsertNative(ctx, resourceType, ents)
-			return err
+			result, err := cl.BulkUpsertNative(ctx, resourceType, ents)
+			if err != nil {
+				return err
+			}
+			return checkBulkResult(result, len(ents), "upsert")
 		},
 		BulkDelete: func(ctx context.Context, _ string, externalIDs []string) error {
 			_, err := cl.BulkDeleteNative(ctx, resourceType, externalIDs)

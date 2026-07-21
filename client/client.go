@@ -428,7 +428,7 @@ func (c *Client) BulkUpsert(ctx context.Context, catalogID string, ents []catalo
 			return nil, fmt.Errorf("bulk upsert: %w", err)
 		}
 
-		br, err := parseBulkUpsertResponse(resp.Body)
+		br, err := parseBulkUpsertResponse(resp.StatusCode(), resp.Body)
 		if err != nil {
 			return nil, err
 		}

@@ -3,8 +3,10 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/rootlyhq/rootly-catalog-sync/catalog"
@@ -114,9 +116,13 @@ func TestBulkUpsertNative_Services(t *testing.T) {
 		requestBodies = append(requestBodies, body)
 
 		entities := body["entities"].([]any)
+		data := make([]map[string]any, len(entities))
+		for i, e := range entities {
+			ent := e.(map[string]any)
+			data[i] = map[string]any{"id": fmt.Sprintf("id-%d", i), "type": "services", "attributes": ent}
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"succeeded": len(entities),
-			"errors":    []any{},
+			"data": data,
 		})
 	})
 	srv := httptest.NewServer(mux)
@@ -132,7 +138,6 @@ func TestBulkUpsertNative_Services(t *testing.T) {
 				"description":  "A test service",
 				"color":        "#00ff00",
 				"pagerduty_id": "PD456",
-				"custom_field": "custom_value",
 			},
 		},
 		{
@@ -177,26 +182,44 @@ func TestBulkUpsertNative_Services(t *testing.T) {
 		t.Errorf("expected known attr 'pagerduty_id' set directly, got %v", first["pagerduty_id"])
 	}
 
-	// custom_field should be in the fields array, not as a top-level attr
-	fieldsArr, ok := first["fields"].([]any)
-	if !ok || len(fieldsArr) == 0 {
-		t.Fatal("expected fields array with custom_field")
-	}
-	found := false
-	for _, f := range fieldsArr {
-		fm := f.(map[string]any)
-		if fm["catalog_field_id"] == "custom_field" && fm["value"] == "custom_value" {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("expected custom_field in fields array")
-	}
-
 	// Second entity should have backstage_id set
 	second := entities[1].(map[string]any)
 	if second["backstage_id"] != "ns:Component:svc-two" {
 		t.Errorf("expected backstage_id, got %v", second["backstage_id"])
+	}
+}
+
+func TestBulkUpsertNative_RejectsUnsupportedFields(t *testing.T) {
+	srv := httptest.NewServer(http.NewServeMux())
+	defer srv.Close()
+
+	c := New("test-key", WithBaseURL(srv.URL), WithMaxRetries(0))
+
+	ents := []catalog.DesiredEntity{
+		{
+			ExternalID: "ext-1",
+			Name:       "Test",
+			Fields: map[string]string{
+				"description":  "ok",
+				"owner":        "team-x",
+				"custom_field": "bad",
+			},
+		},
+	}
+
+	_, err := c.BulkUpsertNative(context.Background(), "service", ents)
+	if err == nil {
+		t.Fatal("expected error for unsupported fields")
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "custom_field") || !strings.Contains(errMsg, "owner") {
+		t.Errorf("expected error to list unsupported fields, got: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, "Supported fields:") {
+		t.Errorf("expected error to list supported fields, got: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, "Hint:") {
+		t.Errorf("expected hint about catalog entities, got: %s", errMsg)
 	}
 }
 

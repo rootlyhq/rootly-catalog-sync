@@ -118,9 +118,13 @@ func TestBulkUpsert(t *testing.T) {
 		requestBodies = append(requestBodies, body)
 
 		entities := body["entities"].([]any)
+		data := make([]map[string]any, len(entities))
+		for i, e := range entities {
+			ent := e.(map[string]any)
+			data[i] = map[string]any{"id": fmt.Sprintf("id-%d", i), "type": "catalog_entities", "attributes": ent}
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"succeeded": len(entities),
-			"errors":    []any{},
+			"data": data,
 		})
 	}))
 	defer srv.Close()
