@@ -8,6 +8,7 @@ A CLI tool that reconciles external sources of truth into [Rootly's Catalog](htt
 
 ## Documentation
 
+- **[Config formats](docs/config-formats.md)** — YAML, Jsonnet, and HCL config examples (v1 + v2)
 - **[Troubleshooting guide](docs/troubleshooting.md)** — common errors, diagnostics, and fixes
 - **[Template syntax](docs/templates.md)** — Go template functions, missing keys, caching
 - **Examples:**
@@ -78,6 +79,24 @@ If `ROOTLY_API_KEY` is set, it takes precedence over OAuth tokens.
 ## Config
 
 ```yaml
+version: 2
+
+sync:
+  - from:
+      local:
+        files: ["catalog/*.yaml"]
+    to: Services
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      owner: "{{ .owner }}"
+      tier: "{{ .tier }}"
+```
+
+<details>
+<summary>v1 format (still supported)</summary>
+
+```yaml
 version: 1
 sync_id: services
 pipelines:
@@ -94,86 +113,15 @@ pipelines:
           tier:
             value: "{{ .tier }}"
 ```
+</details>
 
 Field mappings use Go templates. Built-in helpers: `{{ get .metadata "team" }}` for nested access, `{{ default .tier "unknown" }}` for fallbacks.
 
-Config files are detected by extension: `.yaml`/`.yml` (default), `.jsonnet`, or `.hcl`. All three formats produce the same `Config` struct.
+> **Note:** The `init` command currently generates v1 format. You can convert it to v2 manually using the format shown above.
 
-### Jsonnet config
+Config files are detected by extension: `.yaml`/`.yml` (default), `.jsonnet`, or `.hcl`. All three formats support both v1 and v2 schemas.
 
-Jsonnet adds variables, functions, and imports for DRY configs:
-
-```jsonnet
-// rootly-catalog-sync.jsonnet
-{
-  version: 1,
-  sync_id: "services",
-  pipelines: [
-    {
-      sources: [
-        {
-          github: {
-            token: "$(GITHUB_TOKEN)",
-            owner: "acme",
-            repos: ["payments", "auth", "gateway"],
-            files: ["catalog.yaml"],
-          },
-        },
-      ],
-      outputs: [
-        {
-          catalog: "Services",
-          external_id: "{{ .id }}",
-          name: "{{ .name }}",
-          fields: {
-            owner: {value: "{{ .owner }}"},
-            tier: {value: "{{ .tier }}"},
-          },
-        },
-      ],
-    },
-  ],
-}
-```
-
-```bash
-rootly-catalog-sync sync --config=rootly-catalog-sync.jsonnet
-```
-
-### HCL config
-
-HCL provides Terraform-style syntax with blocks:
-
-```hcl
-# rootly-catalog-sync.hcl
-version = 1
-sync_id = "services"
-
-pipeline {
-  source {
-    local {
-      files = ["catalog/*.yaml"]
-    }
-  }
-  output {
-    catalog     = "Services"
-    external_id = "{{ .id }}"
-    name        = "{{ .name }}"
-    fields = {
-      owner = {
-        value = "{{ .owner }}"
-      }
-      tier = {
-        value = "{{ .tier }}"
-      }
-    }
-  }
-}
-```
-
-```bash
-rootly-catalog-sync sync --config=rootly-catalog-sync.hcl
-```
+See **[Config Formats](docs/config-formats.md)** for Jsonnet and HCL examples.
 
 ### Sources
 
@@ -192,88 +140,106 @@ rootly-catalog-sync sync --config=rootly-catalog-sync.hcl
 #### GitHub source
 
 ```yaml
-sources:
-  - github:
-      token: "$(GITHUB_TOKEN)"
-      owner: acme
-      repos: ["payments", "auth", "gateway"]  # or omit for all org repos
-      files: ["catalog.yaml"]
-      ref: main           # optional, defaults to repo default branch
-      archived: false      # skip archived repos (default)
+from:
+  github:
+    token: "$(GITHUB_TOKEN)"
+    owner: acme
+    repos: ["payments", "auth", "gateway"]  # or omit for all org repos
+    files: ["catalog.yaml"]
+    ref: main           # optional, defaults to repo default branch
+    archived: false      # skip archived repos (default)
 ```
 
 #### Exec source
 
 ```yaml
-sources:
-  - exec:
-      command: bq
-      args: ["query", "--format=json", "SELECT id, name, owner FROM services"]
+from:
+  exec:
+    command: bq
+    args: ["query", "--format=json", "SELECT id, name, owner FROM services"]
 ```
 
 #### Backstage source
 
 ```yaml
-sources:
-  - backstage:
-      url: https://backstage.internal
-      token: "$(BACKSTAGE_TOKEN)"
-      kind: Component
+from:
+  backstage:
+    url: https://backstage.internal
+    token: "$(BACKSTAGE_TOKEN)"
+    kind: Component
 ```
 
 #### GraphQL source
 
 ```yaml
-sources:
-  - graphql:
-      url: https://api.internal/graphql
-      query: "query($cursor: String) { services(after: $cursor) { nodes { id name } pageInfo { endCursor } } }"
-      result: data.services.nodes
-      headers:
-        Authorization: "Bearer $(API_TOKEN)"
-      paginate:
-        mode: cursor
-        cursor_path: data.services.pageInfo.endCursor
-        page_size: 100
+from:
+  graphql:
+    url: https://api.internal/graphql
+    query: "query($cursor: String) { services(after: $cursor) { nodes { id name } pageInfo { endCursor } } }"
+    result: data.services.nodes
+    headers:
+      Authorization: "Bearer $(API_TOKEN)"
+    paginate:
+      mode: cursor
+      cursor_path: data.services.pageInfo.endCursor
+      page_size: 100
 ```
 
 #### URL source
 
 ```yaml
-sources:
-  - url:
-      urls:
-        - https://internal.company.com/catalog/services.yaml
-        - https://internal.company.com/catalog/teams.json
-      headers:
-        Authorization: "Bearer $(API_TOKEN)"
+from:
+  url:
+    urls:
+      - https://internal.company.com/catalog/services.yaml
+      - https://internal.company.com/catalog/teams.json
+    headers:
+      Authorization: "Bearer $(API_TOKEN)"
 ```
 
 #### HTTP source
 
 ```yaml
-sources:
-  - http:
-      url: https://api.internal.com/v1/services
-      method: GET
-      headers:
-        Authorization: "Bearer $(API_TOKEN)"
-      result: data.services
+from:
+  http:
+    url: https://api.internal.com/v1/services
+    method: GET
+    headers:
+      Authorization: "Bearer $(API_TOKEN)"
+    result: data.services
 ```
 
 ```yaml
 # POST with body
-sources:
-  - http:
-      url: https://api.internal.com/graphql
-      method: POST
-      body: '{"query": "{ services { id name owner } }"}'
-      result: data.services
+from:
+  http:
+    url: https://api.internal.com/graphql
+    method: POST
+    body: '{"query": "{ services { id name owner } }"}'
+    result: data.services
 ```
 
 ### Native resource targets
 
 Sync directly to Rootly's native resources instead of custom catalog entities:
+
+```yaml
+version: 2
+
+sync:
+  - from:
+      local:
+        files: ["services.yaml"]
+    to: service               # service | functionality | environment | team
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      description: "{{ .description }}"
+      pagerduty_id: "{{ .pagerduty_id }}"
+```
+
+<details>
+<summary>v1 format (still supported)</summary>
 
 ```yaml
 outputs:
@@ -286,6 +252,7 @@ outputs:
       pagerduty_id:
         value: "{{ .pagerduty_id }}"
 ```
+</details>
 
 | Type | API endpoint | Sentinel |
 |------|-------------|----------|
@@ -294,7 +261,7 @@ outputs:
 | `environment` | `/v1/environments/bulk_upsert` | ≥1 must remain |
 | `team` | `/v1/teams/bulk_upsert` | ≥1 must remain |
 
-When `type` is omitted or `"catalog"`, entities sync to custom catalogs (existing behavior). Native resources support built-in attributes (description, color, pagerduty_id, etc.) plus custom catalog properties — see [Native Resources](docs/examples/native/) for details, including reference fields backed by separate YAML files.
+Use `to: service`, `to: team`, `to: functionality`, or `to: environment` for native resources. Use `to: "Catalog Name"` (with quotes for names containing spaces) for custom catalog entities. Native resources support built-in attributes (description, color, pagerduty_id, etc.) plus custom catalog properties — see [Native Resources](docs/examples/native/) for details, including reference fields backed by separate YAML files.
 
 ### Environment variables
 

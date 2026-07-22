@@ -297,7 +297,7 @@ func TestValidateMissingSyncID(t *testing.T) {
 
 func TestValidateBadVersion(t *testing.T) {
 	cfg := &Config{
-		Version: 2,
+		Version: 99,
 		SyncID:  "test",
 		Pipelines: []Pipeline{
 			{
@@ -579,5 +579,237 @@ func TestLoadJsonnet_MixedFieldCompat(t *testing.T) {
 	}
 	if fields["tier"].Catalog != "Tiers" {
 		t.Errorf("expected catalog=Tiers, got %s", fields["tier"].Catalog)
+	}
+}
+
+func TestLoadV2_NativeService(t *testing.T) {
+	content := `
+version: 2
+sync:
+  - from:
+      local:
+        files: ["services.yaml"]
+    to: service
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      description: "{{ .description }}"
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Version != 2 {
+		t.Errorf("expected version 2, got %d", cfg.Version)
+	}
+	if len(cfg.Pipelines) != 1 {
+		t.Fatalf("expected 1 pipeline, got %d", len(cfg.Pipelines))
+	}
+
+	out := cfg.Pipelines[0].Outputs[0]
+	if out.Type != "service" {
+		t.Errorf("expected type=service, got %s", out.Type)
+	}
+	if out.Catalog != "" {
+		t.Errorf("expected empty catalog for native, got %s", out.Catalog)
+	}
+	if out.ExternalID != "{{ .id }}" {
+		t.Errorf("expected external_id template, got %s", out.ExternalID)
+	}
+	if out.Name != "{{ .name }}" {
+		t.Errorf("expected name template, got %s", out.Name)
+	}
+	if out.Fields["description"].Value != "{{ .description }}" {
+		t.Errorf("expected description field, got %v", out.Fields["description"])
+	}
+}
+
+func TestLoadV2_CatalogEntity(t *testing.T) {
+	content := `
+version: 2
+sync:
+  - from:
+      local:
+        files: ["tiers.yml"]
+    to: Tiers
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := cfg.Pipelines[0].Outputs[0]
+	if out.Type != "" {
+		t.Errorf("expected empty type for catalog, got %s", out.Type)
+	}
+	if out.Catalog != "Tiers" {
+		t.Errorf("expected catalog=Tiers, got %s", out.Catalog)
+	}
+}
+
+func TestLoadV2_ReferenceField(t *testing.T) {
+	content := `
+version: 2
+sync:
+  - from:
+      local:
+        files: ["tiers.yml"]
+    to: Tiers
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+
+  - from:
+      local:
+        files: ["services.yaml"]
+    to: service
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      description: "{{ .description }}"
+      tier:
+        value: "{{ .tier }}"
+        reference: Tiers
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Pipelines) != 2 {
+		t.Fatalf("expected 2 pipelines, got %d", len(cfg.Pipelines))
+	}
+
+	tierOut := cfg.Pipelines[0].Outputs[0]
+	if tierOut.Catalog != "Tiers" {
+		t.Errorf("expected catalog=Tiers, got %s", tierOut.Catalog)
+	}
+
+	svcOut := cfg.Pipelines[1].Outputs[0]
+	if svcOut.Type != "service" {
+		t.Errorf("expected type=service, got %s", svcOut.Type)
+	}
+	tierField := svcOut.Fields["tier"]
+	if tierField.Value != "{{ .tier }}" {
+		t.Errorf("expected tier value template, got %s", tierField.Value)
+	}
+	if tierField.Kind != "reference" {
+		t.Errorf("expected kind=reference, got %s", tierField.Kind)
+	}
+	if tierField.Catalog != "Tiers" {
+		t.Errorf("expected catalog=Tiers, got %s", tierField.Catalog)
+	}
+}
+
+func TestLoadV2_MissingExternalID(t *testing.T) {
+	content := `
+version: 2
+sync:
+  - from:
+      local:
+        files: ["x.yaml"]
+    to: service
+    map:
+      name: "{{ .name }}"
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing external_id")
+	}
+}
+
+func TestLoadV2_MissingTo(t *testing.T) {
+	content := `
+version: 2
+sync:
+  - from:
+      local:
+        files: ["x.yaml"]
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing 'to'")
+	}
+}
+
+func TestLoadV2_BackstageID(t *testing.T) {
+	content := `
+version: 2
+sync:
+  - from:
+      local:
+        files: ["x.yaml"]
+    to: service
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      backstage_id: "{{ .backstage }}"
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := cfg.Pipelines[0].Outputs[0]
+	if out.BackstageID != "{{ .backstage }}" {
+		t.Errorf("expected backstage_id, got %s", out.BackstageID)
+	}
+	if _, inFields := out.Fields["backstage_id"]; inFields {
+		t.Error("backstage_id should not appear in fields")
+	}
+}
+
+func TestValidateV2(t *testing.T) {
+	cfg := &Config{
+		Version: 2,
+		SyncID:  "test",
+		Pipelines: []Pipeline{{
+			Sources: []SourceConfig{{Local: &LocalSourceConfig{Files: []string{"*.yaml"}}}},
+			Outputs: []Output{{
+				Type:       "service",
+				ExternalID: "{{ .id }}",
+				Name:       "{{ .name }}",
+			}},
+		}},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Errorf("v2 config should validate: %v", err)
 	}
 }

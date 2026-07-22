@@ -36,6 +36,26 @@ rootly-catalog-sync.yaml       — config
 
 ```yaml
 # rootly-catalog-sync.yaml
+version: 2
+
+sync:
+  - from:
+      local:
+        files: ["catalog/*.yaml"]
+    to: Services
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      owner: "{{ .owner }}"
+      tier: "{{ .tier }}"
+      description: "{{ .description }}"
+```
+
+<details>
+<summary>v1 format (still supported)</summary>
+
+```yaml
+# rootly-catalog-sync.yaml
 version: 1
 sync_id: simple-example
 pipelines:
@@ -54,6 +74,7 @@ pipelines:
           description:
             value: "{{ .description }}"
 ```
+</details>
 
 ## Usage
 

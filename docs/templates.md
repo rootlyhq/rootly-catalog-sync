@@ -4,16 +4,14 @@ Field mappings in `rootly-catalog-sync` use [Go templates](https://pkg.go.dev/te
 
 ## Basics
 
-Reference top-level fields with dot notation:
+Reference top-level fields with dot notation. In v2 config, all fields live directly in `map:`:
 
 ```yaml
-external_id: "{{ .id }}"
-name: "{{ .name }}"
-fields:
-  owner:
-    value: "{{ .owner }}"
-  tier:
-    value: "{{ .tier }}"
+map:
+  external_id: "{{ .id }}"
+  name: "{{ .name }}"
+  owner: "{{ .owner }}"
+  tier: "{{ .tier }}"
 ```
 
 Given the source entry:
@@ -39,7 +37,8 @@ This produces:
 Access nested fields safely:
 
 ```yaml
-external_id: "{{ get .metadata \"service_id\" }}"
+map:
+  external_id: "{{ get .metadata \"service_id\" }}"
 ```
 
 Source entry:
@@ -61,11 +60,9 @@ executing template: key "missing_key" not found in map
 Return a fallback when a field is nil or empty:
 
 ```yaml
-fields:
-  tier:
-    value: "{{ default .tier \"unknown\" }}"
-  region:
-    value: "{{ default .region \"us-east-1\" }}"
+map:
+  tier: "{{ default .tier \"unknown\" }}"
+  region: "{{ default .region \"us-east-1\" }}"
 ```
 
 | `.tier` value | Result |
@@ -90,9 +87,8 @@ This is intentional -- it catches typos and schema mismatches early rather than 
 **To make a field optional**, wrap it with `default`:
 
 ```yaml
-fields:
-  description:
-    value: "{{ default .description \"\" }}"
+map:
+  description: "{{ default .description \"\" }}"
 ```
 
 ## Static values
@@ -100,11 +96,9 @@ fields:
 Templates can produce static strings:
 
 ```yaml
-fields:
-  source:
-    value: "catalog-sync"
-  environment:
-    value: "production"
+map:
+  source: "catalog-sync"
+  environment: "production"
 ```
 
 No `{{ }}` delimiters needed -- the value is used as-is.
@@ -114,13 +108,12 @@ No `{{ }}` delimiters needed -- the value is used as-is.
 Use Go template syntax to concatenate or transform:
 
 ```yaml
-# Concatenation
-external_id: "{{ .org }}/{{ .name }}"
+map:
+  # Concatenation
+  external_id: "{{ .org }}/{{ .name }}"
 
-# Conditional
-fields:
-  tier:
-    value: "{{ if .critical }}1{{ else }}3{{ end }}"
+  # Conditional
+  tier: "{{ if .critical }}1{{ else }}3{{ end }}"
 ```
 
 ## Template caching
@@ -138,35 +131,38 @@ This is transparent and requires no configuration.
 ### Backstage entity mapping
 
 ```yaml
-outputs:
-  - catalog: "Services"
-    external_id: "{{ get .metadata \"name\" }}"
-    name: "{{ get .metadata \"name\" }}"
-    fields:
-      kind:
-        value: "{{ .kind }}"
-      owner:
-        value: "{{ get .spec \"owner\" }}"
-      lifecycle:
-        value: "{{ get .spec \"lifecycle\" }}"
-      system:
-        value: "{{ default (get .spec \"system\") \"\" }}"
+sync:
+  - from:
+      backstage:
+        url: https://backstage.internal
+        token: "$(BACKSTAGE_TOKEN)"
+        kind: Component
+    to: Services
+    map:
+      external_id: "{{ get .metadata \"name\" }}"
+      name: "{{ get .metadata \"name\" }}"
+      kind: "{{ .kind }}"
+      owner: "{{ get .spec \"owner\" }}"
+      lifecycle: "{{ get .spec \"lifecycle\" }}"
+      system: "{{ default (get .spec \"system\") \"\" }}"
 ```
 
 ### GitHub repo metadata
 
 ```yaml
-outputs:
-  - catalog: "Repositories"
-    external_id: "{{ .full_name }}"
-    name: "{{ .name }}"
-    fields:
-      language:
-        value: "{{ default .language \"unknown\" }}"
-      visibility:
-        value: "{{ .visibility }}"
-      default_branch:
-        value: "{{ .default_branch }}"
+sync:
+  - from:
+      github:
+        token: "$(GITHUB_TOKEN)"
+        owner: acme
+        files: ["catalog.yaml"]
+    to: Repositories
+    map:
+      external_id: "{{ .full_name }}"
+      name: "{{ .name }}"
+      language: "{{ default .language \"unknown\" }}"
+      visibility: "{{ .visibility }}"
+      default_branch: "{{ .default_branch }}"
 ```
 
 ### CSV with header mapping
@@ -178,15 +174,16 @@ payments-api,Payments API,team-payments,1
 ```
 
 ```yaml
-outputs:
-  - catalog: "Services"
-    external_id: "{{ .id }}"
-    name: "{{ .name }}"
-    fields:
-      owner:
-        value: "{{ .owner }}"
-      tier:
-        value: "{{ .tier }}"
+sync:
+  - from:
+      csv:
+        files: ["services.csv"]
+    to: Services
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      owner: "{{ .owner }}"
+      tier: "{{ .tier }}"
 ```
 
 CSV headers become the field names in the source entry.
@@ -194,13 +191,15 @@ CSV headers become the field names in the source entry.
 ### Exec source (BigQuery)
 
 ```yaml
-outputs:
-  - catalog: "Services"
-    external_id: "{{ .service_id }}"
-    name: "{{ .display_name }}"
-    fields:
-      owner:
-        value: "{{ .team_email }}"
-      tier:
-        value: "{{ default .sla_tier \"3\" }}"
+sync:
+  - from:
+      exec:
+        command: bq
+        args: ["query", "--format=json", "SELECT service_id, display_name, team_email, sla_tier FROM services"]
+    to: Services
+    map:
+      external_id: "{{ .service_id }}"
+      name: "{{ .display_name }}"
+      owner: "{{ .team_email }}"
+      tier: "{{ default .sla_tier \"3\" }}"
 ```

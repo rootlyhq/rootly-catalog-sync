@@ -28,7 +28,29 @@ func Load(path string) (*Config, error) {
 		return os.Getenv(varName)
 	})
 
-	var cfg Config
+	jsonContent, err := toJSON(path, content)
+	if err != nil {
+		return nil, err
+	}
+
+	var versionProbe struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(jsonContent, &versionProbe); err != nil {
+		return nil, fmt.Errorf("reading config version: %w", err)
+	}
+
+	switch versionProbe.Version {
+	case 0, 1:
+		return loadV1(jsonContent)
+	case 2:
+		return loadV2(jsonContent)
+	default:
+		return nil, fmt.Errorf("unsupported config version: %d", versionProbe.Version)
+	}
+}
+
+func toJSON(path, content string) ([]byte, error) {
 	ext := filepath.Ext(path)
 	switch ext {
 	case ".jsonnet":
@@ -37,23 +59,23 @@ func Load(path string) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("evaluating jsonnet: %w", err)
 		}
-		if err := json.Unmarshal([]byte(jsonStr), &cfg); err != nil {
-			return nil, fmt.Errorf("parsing jsonnet output: %w", err)
-		}
+		return []byte(jsonStr), nil
 	case ".hcl":
-		jsonBytes, err := convertHCLToJSON(path, content)
-		if err != nil {
-			return nil, fmt.Errorf("converting hcl to json: %w", err)
-		}
-		if err := json.Unmarshal(jsonBytes, &cfg); err != nil {
-			return nil, fmt.Errorf("parsing hcl config: %w", err)
-		}
+		return convertHCLToJSON(path, content)
 	default:
-		if err := yaml.Unmarshal([]byte(content), &cfg); err != nil {
+		var raw any
+		if err := yaml.Unmarshal([]byte(content), &raw); err != nil {
 			return nil, fmt.Errorf("parsing config file: %w", err)
 		}
+		return json.Marshal(raw)
 	}
+}
 
+func loadV1(data []byte) (*Config, error) {
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parsing v1 config: %w", err)
+	}
 	return &cfg, nil
 }
 
@@ -68,7 +90,23 @@ func convertHCLToJSON(filename, content string) ([]byte, error) {
 	_ = diags
 
 	ctx := &hcl.EvalContext{}
+
+	// Try v2 schema first (sync blocks), fall back to v1 (pipeline blocks).
 	bodyContent, diags := file.Body.Content(&hcl.BodySchema{
+		Attributes: []hcl.AttributeSchema{
+			{Name: "version"},
+		},
+		Blocks: []hcl.BlockHeaderSchema{
+			{Type: "sync"},
+		},
+	})
+	if !diags.HasErrors() && len(bodyContent.Blocks) > 0 {
+		return convertHCLV2ToJSON(bodyContent, ctx)
+	}
+
+	// Re-parse with v1 schema.
+	file2, _ := hclsyntax.ParseConfig([]byte(content), filename, hcl.Pos{Line: 1, Column: 1})
+	bodyContent, diags = file2.Body.Content(&hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
 			{Name: "version"},
 			{Name: "sync_id"},
@@ -100,6 +138,30 @@ func convertHCLToJSON(filename, content string) ([]byte, error) {
 		pipelines = append(pipelines, p)
 	}
 	result["pipelines"] = pipelines
+
+	return json.Marshal(result)
+}
+
+func convertHCLV2ToJSON(bodyContent *hcl.BodyContent, ctx *hcl.EvalContext) ([]byte, error) {
+	result := make(map[string]any)
+
+	for _, attr := range bodyContent.Attributes {
+		v, diags := attr.Expr.Value(ctx)
+		if diags.HasErrors() {
+			return nil, fmt.Errorf("evaluating %s: %s", attr.Name, diags.Error())
+		}
+		result[attr.Name] = ctyToGo(v)
+	}
+
+	var syncs []any
+	for _, block := range bodyContent.Blocks {
+		s, err := hclBlockToMap(block, ctx)
+		if err != nil {
+			return nil, err
+		}
+		syncs = append(syncs, s)
+	}
+	result["sync"] = syncs
 
 	return json.Marshal(result)
 }
@@ -207,8 +269,8 @@ func validFieldKind(kind string) bool {
 }
 
 func Validate(cfg *Config) error {
-	if cfg.Version != 1 {
-		return fmt.Errorf("unsupported config version: %d (expected 1)", cfg.Version)
+	if cfg.Version != 1 && cfg.Version != 2 {
+		return fmt.Errorf("unsupported config version: %d (expected 1 or 2)", cfg.Version)
 	}
 	if cfg.SyncID == "" {
 		return fmt.Errorf("sync_id is required")

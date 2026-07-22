@@ -21,6 +21,28 @@ docs/examples/github/
 `rootly-catalog-sync.yaml` scans repos for catalog data files:
 
 ```yaml
+version: 2
+
+sync:
+  - from:
+      github:
+        token: "$(GITHUB_TOKEN)"
+        owner: acme
+        files: ["catalog.yaml", "**/catalog.yaml"]
+        archived: false
+    to: Services
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      owner: "{{ .owner }}"
+      tier: "{{ default .tier \"3\" }}"
+      description: "{{ default .description \"\" }}"
+```
+
+<details>
+<summary>v1 format (still supported)</summary>
+
+```yaml
 version: 1
 sync_id: github-services
 pipelines:
@@ -42,6 +64,7 @@ pipelines:
           description:
             value: "{{ default .description \"\" }}"
 ```
+</details>
 
 ## How it works
 
@@ -68,12 +91,12 @@ The `files` field supports both single-level globs and doublestar recursive patt
 To sync only specific repositories instead of the entire org:
 
 ```yaml
-sources:
-  - github:
-      token: "$(GITHUB_TOKEN)"
-      owner: acme
-      repos: ["payments", "auth", "gateway"]
-      files: ["catalog.yaml"]
+from:
+  github:
+    token: "$(GITHUB_TOKEN)"
+    owner: acme
+    repos: ["payments", "auth", "gateway"]
+    files: ["catalog.yaml"]
 ```
 
 ## Custom branch
@@ -81,23 +104,23 @@ sources:
 By default, the repo's default branch is used. To pin to a specific ref:
 
 ```yaml
-sources:
-  - github:
-      token: "$(GITHUB_TOKEN)"
-      owner: acme
-      files: ["catalog.yaml"]
-      ref: main
+from:
+  github:
+    token: "$(GITHUB_TOKEN)"
+    owner: acme
+    files: ["catalog.yaml"]
+    ref: main
 ```
 
 ## Including archived repos
 
 ```yaml
-sources:
-  - github:
-      token: "$(GITHUB_TOKEN)"
-      owner: acme
-      files: ["catalog.yaml"]
-      archived: true
+from:
+  github:
+    token: "$(GITHUB_TOKEN)"
+    owner: acme
+    files: ["catalog.yaml"]
+    archived: true
 ```
 
 ## Usage

@@ -559,25 +559,19 @@ func (m WizardModel) generateConfig() string {
 }
 
 func (m WizardModel) generateYAML() string {
-	syncID := slugify(m.catalogName)
 	var b strings.Builder
 
-	b.WriteString("version: 1\n")
-	_, _ = fmt.Fprintf(&b, "sync_id: %s\n", syncID)
-	b.WriteString("pipelines:\n")
-	b.WriteString("  - sources:\n")
+	b.WriteString("version: 2\n\n")
+	b.WriteString("sync:\n")
+	b.WriteString("  - from:\n")
 	b.WriteString(m.generateSourceYAML())
-	b.WriteString("    outputs:\n")
-	_, _ = fmt.Fprintf(&b, "      - catalog: %q\n", m.catalogName)
-	_, _ = fmt.Fprintf(&b, "        external_id: %q\n", m.externalID)
-	_, _ = fmt.Fprintf(&b, "        name: %q\n", m.nameField)
+	_, _ = fmt.Fprintf(&b, "    to: %q\n", m.catalogName)
+	b.WriteString("    map:\n")
+	_, _ = fmt.Fprintf(&b, "      external_id: %q\n", m.externalID)
+	_, _ = fmt.Fprintf(&b, "      name: %q\n", m.nameField)
 
-	if len(m.fields) > 0 {
-		b.WriteString("        fields:\n")
-		for _, f := range m.fields {
-			_, _ = fmt.Fprintf(&b, "          %s:\n", f.slug)
-			_, _ = fmt.Fprintf(&b, "            value: %q\n", f.template)
-		}
+	for _, f := range m.fields {
+		_, _ = fmt.Fprintf(&b, "      %s: %q\n", f.slug, f.template)
 	}
 
 	return b.String()
@@ -654,30 +648,30 @@ func (m WizardModel) generateSourceYAML() string {
 		b.WriteString("            - id: example\n")
 		b.WriteString("              name: Example\n")
 	case "local":
-		b.WriteString("      - local:\n")
-		_, _ = fmt.Fprintf(&b, "          files: [%q]\n", m.sourceFiles)
+		b.WriteString("      local:\n")
+		_, _ = fmt.Fprintf(&b, "        files: [%q]\n", m.sourceFiles)
 	case "github":
-		b.WriteString("      - github:\n")
-		_, _ = fmt.Fprintf(&b, "          owner: %q\n", m.githubOwner)
-		m.writeReposList(&b, "          ")
-		m.writeFilesList(&b, "          ", m.githubFiles)
+		b.WriteString("      github:\n")
+		_, _ = fmt.Fprintf(&b, "        owner: %q\n", m.githubOwner)
+		m.writeReposList(&b, "        ")
+		m.writeFilesList(&b, "        ", m.githubFiles)
 	case "exec":
-		b.WriteString("      - exec:\n")
-		_, _ = fmt.Fprintf(&b, "          command: %q\n", m.execCommand)
+		b.WriteString("      exec:\n")
+		_, _ = fmt.Fprintf(&b, "        command: %q\n", m.execCommand)
 	case "csv":
-		b.WriteString("      - csv:\n")
-		_, _ = fmt.Fprintf(&b, "          files: [%q]\n", m.sourceFiles)
+		b.WriteString("      csv:\n")
+		_, _ = fmt.Fprintf(&b, "        files: [%q]\n", m.sourceFiles)
 		if m.csvDelimiter != "" {
-			_, _ = fmt.Fprintf(&b, "          delimiter: %q\n", m.csvDelimiter)
+			_, _ = fmt.Fprintf(&b, "        delimiter: %q\n", m.csvDelimiter)
 		}
 	case "backstage":
-		b.WriteString("      - backstage:\n")
-		_, _ = fmt.Fprintf(&b, "          url: %q\n", m.backstageURL)
+		b.WriteString("      backstage:\n")
+		_, _ = fmt.Fprintf(&b, "        url: %q\n", m.backstageURL)
 	case "graphql":
-		b.WriteString("      - graphql:\n")
-		_, _ = fmt.Fprintf(&b, "          url: %q\n", m.graphqlURL)
-		_, _ = fmt.Fprintf(&b, "          query: %q\n", m.graphqlQuery)
-		_, _ = fmt.Fprintf(&b, "          result: %q\n", m.graphqlResult)
+		b.WriteString("      graphql:\n")
+		_, _ = fmt.Fprintf(&b, "        url: %q\n", m.graphqlURL)
+		_, _ = fmt.Fprintf(&b, "        query: %q\n", m.graphqlQuery)
+		_, _ = fmt.Fprintf(&b, "        result: %q\n", m.graphqlResult)
 	}
 	return b.String()
 }

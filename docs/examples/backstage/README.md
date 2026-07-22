@@ -20,6 +20,28 @@ docs/examples/backstage/
 `rootly-catalog-sync.yaml` connects to Backstage and maps entity fields:
 
 ```yaml
+version: 2
+
+sync:
+  - from:
+      backstage:
+        url: https://backstage.internal
+        token: "$(BACKSTAGE_TOKEN)"
+        kind: Component
+    to: Services
+    map:
+      external_id: "{{ get .metadata \"name\" }}"
+      name: "{{ get .metadata \"name\" }}"
+      kind: "{{ .kind }}"
+      owner: "{{ get .spec \"owner\" }}"
+      lifecycle: "{{ get .spec \"lifecycle\" }}"
+      type: "{{ default (get .spec \"type\") \"\" }}"
+```
+
+<details>
+<summary>v1 format (still supported)</summary>
+
+```yaml
 version: 1
 sync_id: backstage-services
 pipelines:
@@ -42,6 +64,7 @@ pipelines:
           type:
             value: "{{ default (get .spec \"type\") \"\" }}"
 ```
+</details>
 
 ## How it works
 
@@ -77,7 +100,37 @@ rootly-catalog-sync sync --config=docs/examples/backstage/rootly-catalog-sync.ya
 
 ## Filtering by kind
 
-To sync multiple entity kinds into separate catalogs, add multiple pipelines:
+To sync multiple entity kinds into separate catalogs, add multiple sync entries:
+
+```yaml
+version: 2
+
+sync:
+  - from:
+      backstage:
+        url: https://backstage.internal
+        token: "$(BACKSTAGE_TOKEN)"
+        kind: Component
+    to: Services
+    map:
+      external_id: "{{ get .metadata \"name\" }}"
+      name: "{{ get .metadata \"name\" }}"
+      owner: "{{ get .spec \"owner\" }}"
+
+  - from:
+      backstage:
+        url: https://backstage.internal
+        token: "$(BACKSTAGE_TOKEN)"
+        kind: API
+    to: APIs
+    map:
+      external_id: "{{ get .metadata \"name\" }}"
+      name: "{{ get .metadata \"name\" }}"
+      owner: "{{ get .spec \"owner\" }}"
+```
+
+<details>
+<summary>v1 format (still supported)</summary>
 
 ```yaml
 pipelines:
@@ -107,3 +160,4 @@ pipelines:
           owner:
             value: "{{ get .spec \"owner\" }}"
 ```
+</details>

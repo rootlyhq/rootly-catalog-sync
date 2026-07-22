@@ -53,6 +53,9 @@ func initRuntime() (*config.Config, *client.Client, string, error) {
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("loading config: %w", err)
 	}
+	if err := config.Validate(cfg); err != nil {
+		return nil, nil, "", fmt.Errorf("invalid config: %w", err)
+	}
 	var opts []client.Option
 	if u := os.Getenv("ROOTLY_API_URL"); u != "" {
 		opts = append(opts, client.WithBaseURL(u))
@@ -173,6 +176,8 @@ func reconcileAll(ctx context.Context, cfg *config.Config, cl *client.Client, ba
 		if err != nil {
 			return nil, err
 		}
+
+		var pipelineResults []PlanResult
 		for _, out := range pipeline.Outputs {
 			desired, err := mapping.MapEntries(allEntries, out)
 			if err != nil {
@@ -202,13 +207,7 @@ func reconcileAll(ctx context.Context, cfg *config.Config, cl *client.Client, ba
 						return nil, fmt.Errorf("safety check failed: %w", err)
 					}
 				}
-				pr := PlanResult{Plan: plan, CatalogID: out.Type, Output: out}
-				if ro.applyEach != nil {
-					if err := ro.applyEach(ctx, pr); err != nil {
-						return nil, err
-					}
-				}
-				results = append(results, pr)
+				pipelineResults = append(pipelineResults, PlanResult{Plan: plan, CatalogID: out.Type, Output: out})
 			} else {
 				catalogID, err := cl.EnsureCatalog(ctx, client.CatalogSpec{Name: out.Catalog})
 				if err != nil {
@@ -230,15 +229,18 @@ func reconcileAll(ctx context.Context, cfg *config.Config, cl *client.Client, ba
 						return nil, fmt.Errorf("safety check failed: %w", err)
 					}
 				}
-				pr := PlanResult{Plan: plan, CatalogID: catalogID, Output: out}
-				if ro.applyEach != nil {
-					if err := ro.applyEach(ctx, pr); err != nil {
-						return nil, err
-					}
-				}
-				results = append(results, pr)
+				pipelineResults = append(pipelineResults, PlanResult{Plan: plan, CatalogID: catalogID, Output: out})
 			}
 		}
+
+		if ro.applyEach != nil {
+			for _, pr := range pipelineResults {
+				if err := ro.applyEach(ctx, pr); err != nil {
+					return nil, err
+				}
+			}
+		}
+		results = append(results, pipelineResults...)
 	}
 	return results, nil
 }

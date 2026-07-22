@@ -10,21 +10,18 @@ import (
 	"github.com/rootlyhq/rootly-catalog-sync/tui"
 )
 
-const sampleConfig = `version: 1
-sync_id: services
-pipelines:
-  - sources:
-      - local:
-          files: ["catalog/*.yaml"]
-    outputs:
-      - catalog: "Services"
-        external_id: "{{ .id }}"
-        name: "{{ .name }}"
-        fields:
-          owner:
-            value: "{{ .owner }}"
-          tier:
-            value: "{{ .tier }}"
+const sampleConfig = `version: 2
+
+sync:
+  - from:
+      local:
+        files: ["catalog/*.yaml"]
+    to: Services
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      owner: "{{ .owner }}"
+      tier: "{{ .tier }}"
 `
 
 var interactive bool

@@ -4,7 +4,43 @@ Sync services, functionalities, environments, and teams directly to Rootly's nat
 
 ## Config
 
-A single config can sync multiple resource types using separate pipelines:
+```yaml
+version: 2
+
+sync:
+  - from:
+      local:
+        files: ["services.yaml"]
+    to: service
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      description: "{{ .description }}"
+      pagerduty_id: "{{ .pagerduty_id }}"
+
+  - from:
+      local:
+        files: ["teams.yaml"]
+    to: team
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      description: "{{ .description }}"
+      color: "{{ .color }}"
+
+  - from:
+      local:
+        files: ["environments.yaml"]
+    to: environment
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      description: "{{ .description }}"
+      color: "{{ .color }}"
+```
+
+<details>
+<summary>v1 format (still supported)</summary>
 
 ```yaml
 version: 1
@@ -49,6 +85,7 @@ pipelines:
           color:
             value: "{{ .color }}"
 ```
+</details>
 
 ## Usage
 
@@ -84,27 +121,25 @@ Native resources also support custom catalog properties. Text properties are aut
 
 ### Text properties
 
-Fields not in the built-in list are auto-created as text properties:
+Fields not in the built-in list are auto-created as text properties on `sync`:
 
 ```yaml
-pipelines:
-  - sources:
-      - local:
-          files: ["services.yaml"]
-    outputs:
-      - type: service
-        external_id: "{{ .id }}"
-        name: "{{ .name }}"
-        fields:
-          description:
-            value: "{{ .description }}"
-          changelog-url:
-            value: "{{ .changelog_url }}"
+version: 2
+sync:
+  - from:
+      local:
+        files: ["services.yaml"]
+    to: service
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      description: "{{ .description }}"
+      changelog-url: "{{ .changelog_url }}"
 ```
 
 ### Reference properties
 
-Reference fields point to entries in a catalog. Define the reference data in a separate file, sync it as a catalog in an earlier pipeline, then reference it by name:
+Reference fields point to entries in a catalog. Define the reference data in a separate file, sync it first, then reference it by name:
 
 ```yaml
 # tiers.yml
@@ -117,36 +152,29 @@ Reference fields point to entries in a catalog. Define the reference data in a s
 ```
 
 ```yaml
-# rootly-catalog-sync.yaml
-version: 1
-sync_id: native-with-refs
-pipelines:
-  # Pipeline 1: sync reference data
-  - sources:
-      - local:
-          files: ["tiers.yml"]
-    outputs:
-      - catalog: "Tiers"
-        external_id: "{{ .id }}"
-        name: "{{ .name }}"
+version: 2
+sync:
+  - from:
+      local:
+        files: ["tiers.yml"]
+    to: Tiers
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
 
-  # Pipeline 2: sync services with tier reference
-  - sources:
-      - local:
-          files: ["services.yaml"]
-    outputs:
-      - type: service
-        external_id: "{{ .id }}"
-        name: "{{ .name }}"
-        fields:
-          description:
-            value: "{{ .description }}"
-          service-tier:
-            value: "{{ .tier }}"
-            kind: reference
-            catalog: "Tiers"
+  - from:
+      local:
+        files: ["services.yaml"]
+    to: service
+    map:
+      external_id: "{{ .id }}"
+      name: "{{ .name }}"
+      description: "{{ .description }}"
+      service-tier:
+        value: "{{ .tier }}"
+        reference: Tiers
 ```
 
 The `service-tier` property must exist in the Rootly UI as a `reference` kind pointing to the "Tiers" catalog. The tool resolves the human-readable name ("Tier 1") to the catalog entity UUID automatically.
 
-Pipeline order matters — reference catalogs must be synced before the resources that use them.
+Sync entries are processed in order — reference catalogs must come before the resources that use them.
