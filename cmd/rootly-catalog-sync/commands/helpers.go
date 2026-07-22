@@ -200,7 +200,7 @@ func reconcileAll(ctx context.Context, cfg *config.Config, cl *client.Client, ba
 				plan := catalogsync.Diff(out.Type, out.Type, live, desired, allowPrune)
 				if !ro.skipSafety {
 					minKeep := 0
-					if out.Type == "environment" || out.Type == "team" {
+					if out.Type == client.NativeEnvironment || out.Type == client.NativeTeam {
 						minKeep = 1
 					}
 					if err := catalogsync.CheckSafety(plan, len(live), len(desired), pruneThreshold, minKeep); err != nil {
@@ -324,7 +324,7 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 			}
 			continue
 		}
-		if kind != "text" {
+		if kind != config.KindText {
 			available := make([]string, 0, len(props))
 			for _, p := range props {
 				available = append(available, fmt.Sprintf("%s (%s)", p.Slug, p.Kind))
@@ -335,10 +335,10 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 		if !canMutate {
 			return nil, fmt.Errorf("property %q does not exist on %s — run sync to auto-create it", slug, out.Type)
 		}
-		if err := cl.EnsureNativeProperty(ctx, out.Type, slug, "text", ""); err != nil {
+		if err := cl.EnsureNativeProperty(ctx, out.Type, slug, config.KindText, ""); err != nil {
 			return nil, fmt.Errorf("auto-creating text property %q: %w", slug, err)
 		}
-		props = append(props, client.NativePropertyInfo{Slug: slug, Kind: "text"})
+		props = append(props, client.NativePropertyInfo{Slug: slug, Kind: config.KindText})
 	}
 	return props, nil
 }

@@ -258,16 +258,26 @@ func ctyToGo(v cty.Value) any {
 }
 
 const (
-	KindReference = "reference"
-	KindText      = "text"
-	KindService   = "service"
+	KindText          = "text"
+	KindNumber        = "number"
+	KindBoolean       = "boolean"
+	KindReference     = "reference"
+	KindService       = "service"
+	KindGroup         = "group"
+	KindFunctionality = "functionality"
+	KindEnvironment   = "environment"
+	KindIncidentType  = "incident_type"
+	KindCause         = "cause"
+	KindUser          = "user"
+	KindSlackChannel  = "slack_channel"
+	KindSlackAlias    = "slack_alias"
 )
 
 var validFieldKinds = map[string]bool{
-	KindText: true, "number": true, "boolean": true, KindReference: true,
-	KindService: true, "group": true, "functionality": true, "environment": true,
-	"incident_type": true, "cause": true, "user": true,
-	"slack_channel": true, "slack_alias": true,
+	KindText: true, KindNumber: true, KindBoolean: true, KindReference: true,
+	KindService: true, KindGroup: true, KindFunctionality: true, KindEnvironment: true,
+	KindIncidentType: true, KindCause: true, KindUser: true,
+	KindSlackChannel: true, KindSlackAlias: true,
 }
 
 func validFieldKind(kind string) bool {

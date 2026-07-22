@@ -107,7 +107,7 @@ type FieldValue struct {
 
 func (f FieldValue) EffectiveKind() string {
 	if f.Kind == "" {
-		return "text"
+		return KindText
 	}
 	return f.Kind
 }
