@@ -324,7 +324,7 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 			}
 			continue
 		}
-		if kind != config.KindText {
+		if !client.SDKCreatableKind(kind) {
 			available := make([]string, 0, len(props))
 			for _, p := range props {
 				available = append(available, fmt.Sprintf("%s (%s)", p.Slug, p.Kind))
@@ -332,13 +332,16 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 			return nil, fmt.Errorf("property %q (kind: %s) not found on %s — must be created in the Rootly UI first\n  Available properties: %v",
 				slug, kind, out.Type, available)
 		}
+		if kind == config.KindReference {
+			return nil, fmt.Errorf("property %q (kind: reference) not found on %s — reference properties must be created in the Rootly UI first", slug, out.Type)
+		}
 		if !canMutate {
 			return nil, fmt.Errorf("property %q does not exist on %s — run sync to auto-create it", slug, out.Type)
 		}
-		if err := cl.EnsureNativeProperty(ctx, out.Type, slug, config.KindText, ""); err != nil {
-			return nil, fmt.Errorf("auto-creating text property %q: %w", slug, err)
+		if err := cl.EnsureNativeProperty(ctx, out.Type, slug, kind, ""); err != nil {
+			return nil, fmt.Errorf("auto-creating %s property %q: %w", kind, slug, err)
 		}
-		props = append(props, client.NativePropertyInfo{Slug: slug, Kind: config.KindText})
+		props = append(props, client.NativePropertyInfo{Slug: slug, Kind: kind})
 	}
 	return props, nil
 }

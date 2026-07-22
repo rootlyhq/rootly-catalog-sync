@@ -82,7 +82,7 @@ var sdkCreatableKinds = map[string]bool{
 	"incident_type": true, "cause": true, "user": true,
 }
 
-func sdkCreatableKind(kind string) bool {
+func SDKCreatableKind(kind string) bool {
 	return sdkCreatableKinds[kind]
 }
 
@@ -339,7 +339,7 @@ func (c *Client) EnsureFields(ctx context.Context, catalogID string, fields []Fi
 			kind = "text"
 		}
 
-		if !sdkCreatableKind(kind) {
+		if !SDKCreatableKind(kind) {
 			return fmt.Errorf("field %q has kind %q which cannot be auto-created — create it in the Rootly UI first", f.Name, kind)
 		}
 
