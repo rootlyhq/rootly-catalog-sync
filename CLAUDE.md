@@ -34,6 +34,10 @@ golangci-lint run ./...
 - Native resources (service/functionality/environment/team) use `client/native.go`
 - Output `type` field routes to native bulk endpoints vs catalog entity endpoints
 - Template caching via sync.Map in tmpl package
+- Config `fields` accepts both scalar (`slug: "{{ .x }}"`) and object (`slug: {value: "{{ .x }}", kind: reference, catalog: "Tiers"}`) forms
+- Native resources support custom catalog properties via `/v1/{type}/properties` endpoints; text properties auto-created on sync, non-text require UI setup
+- Reference fields resolve human-readable names to catalog entity UUIDs; referenced catalogs must exist (synced in earlier pipeline via `withApplyEach`)
+- `withApplyEach` callback applies each pipeline's results before the next pipeline runs (used by sync/watch); plan/status only read
 
 ## Environment
 

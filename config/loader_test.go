@@ -20,7 +20,8 @@ pipelines:
         external_id: "{{ .name }}"
         name: "{{ .name }}"
         fields:
-          tier: "{{ .tier }}"
+          tier:
+            value: "{{ .tier }}"
 `
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -57,7 +58,7 @@ pipelines:
 	if p.Outputs[0].Catalog != "services" {
 		t.Errorf("expected catalog services, got %s", p.Outputs[0].Catalog)
 	}
-	if p.Outputs[0].Fields["tier"] != "{{ .tier }}" {
+	if p.Outputs[0].Fields["tier"].Value != "{{ .tier }}" {
 		t.Errorf("unexpected fields: %v", p.Outputs[0].Fields)
 	}
 }
@@ -114,7 +115,7 @@ func TestLoadJsonnet(t *testing.T) {
           external_id: "{{ .name }}",
           name: "{{ .name }}",
           fields: {
-            tier: "{{ .tier }}",
+            tier: {value: "{{ .tier }}"},
           },
         },
       ],
@@ -154,7 +155,7 @@ func TestLoadJsonnet(t *testing.T) {
 	if p.Outputs[0].Catalog != "services" {
 		t.Errorf("expected catalog services, got %s", p.Outputs[0].Catalog)
 	}
-	if p.Outputs[0].Fields["tier"] != "{{ .tier }}" {
+	if p.Outputs[0].Fields["tier"].Value != "{{ .tier }}" {
 		t.Errorf("unexpected fields: %v", p.Outputs[0].Fields)
 	}
 }
@@ -218,7 +219,9 @@ pipeline {
     external_id = "{{ .name }}"
     name        = "{{ .name }}"
     fields = {
-      tier = "{{ .tier }}"
+      tier = {
+        value = "{{ .tier }}"
+      }
     }
   }
 }
@@ -255,7 +258,7 @@ pipeline {
 	if p.Outputs[0].Catalog != "services" {
 		t.Errorf("expected catalog services, got %s", p.Outputs[0].Catalog)
 	}
-	if p.Outputs[0].Fields["tier"] != "{{ .tier }}" {
+	if p.Outputs[0].Fields["tier"].Value != "{{ .tier }}" {
 		t.Errorf("unexpected fields: %v", p.Outputs[0].Fields)
 	}
 }
@@ -414,5 +417,167 @@ func TestValidateInvalidType(t *testing.T) {
 	// This currently passes — documenting that no type validation exists.
 	if err != nil {
 		t.Errorf("unexpected error (type validation may have been added): %v", err)
+	}
+}
+
+func TestValidateFieldKind(t *testing.T) {
+	base := func(fv FieldValue) *Config {
+		return &Config{
+			Version: 1,
+			SyncID:  "test",
+			Pipelines: []Pipeline{{
+				Sources: []SourceConfig{{Local: &LocalSourceConfig{Files: []string{"*.yaml"}}}},
+				Outputs: []Output{{
+					Type:       "service",
+					ExternalID: "{{ .id }}",
+					Name:       "{{ .name }}",
+					Fields:     map[string]FieldValue{"test-field": fv},
+				}},
+			}},
+		}
+	}
+
+	t.Run("valid text kind", func(t *testing.T) {
+		err := Validate(base(FieldValue{Value: "{{ .x }}", Kind: "text"}))
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("valid reference kind with catalog", func(t *testing.T) {
+		err := Validate(base(FieldValue{Value: "{{ .x }}", Kind: "reference", Catalog: "Tiers"}))
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("empty value rejected", func(t *testing.T) {
+		err := Validate(base(FieldValue{Value: ""}))
+		if err == nil {
+			t.Fatal("expected error for empty value")
+		}
+	})
+
+	t.Run("invalid kind rejected", func(t *testing.T) {
+		err := Validate(base(FieldValue{Value: "{{ .x }}", Kind: "invalid_kind"}))
+		if err == nil {
+			t.Fatal("expected error for invalid kind")
+		}
+	})
+
+	t.Run("reference without catalog rejected", func(t *testing.T) {
+		err := Validate(base(FieldValue{Value: "{{ .x }}", Kind: "reference"}))
+		if err == nil {
+			t.Fatal("expected error for reference without catalog")
+		}
+	})
+
+	t.Run("all valid kinds accepted", func(t *testing.T) {
+		for _, kind := range []string{"text", "number", "boolean", "reference", "service", "group", "functionality", "environment", "incident_type", "cause", "user", "slack_channel", "slack_alias"} {
+			fv := FieldValue{Value: "{{ .x }}", Kind: kind}
+			if kind == "reference" {
+				fv.Catalog = "SomeCatalog"
+			}
+			err := Validate(base(fv))
+			if err != nil {
+				t.Errorf("kind %q should be valid, got: %v", kind, err)
+			}
+		}
+	})
+}
+
+func TestLoadYAML_ScalarFieldCompat(t *testing.T) {
+	content := `
+version: 1
+sync_id: compat-test
+pipelines:
+  - sources:
+      - local:
+          files: ["*.yaml"]
+    outputs:
+      - catalog: Services
+        external_id: "{{ .id }}"
+        name: "{{ .name }}"
+        fields:
+          owner: "{{ .owner }}"
+          tier:
+            value: "{{ .tier }}"
+            kind: reference
+            catalog: "Tiers"
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	fields := cfg.Pipelines[0].Outputs[0].Fields
+	if fields["owner"].Value != "{{ .owner }}" {
+		t.Errorf("scalar field: expected {{ .owner }}, got %s", fields["owner"].Value)
+	}
+	if fields["owner"].Kind != "" {
+		t.Errorf("scalar field: expected empty kind, got %s", fields["owner"].Kind)
+	}
+	if fields["tier"].Value != "{{ .tier }}" {
+		t.Errorf("object field: expected {{ .tier }}, got %s", fields["tier"].Value)
+	}
+	if fields["tier"].Kind != "reference" {
+		t.Errorf("object field: expected kind=reference, got %s", fields["tier"].Kind)
+	}
+	if fields["tier"].Catalog != "Tiers" {
+		t.Errorf("object field: expected catalog=Tiers, got %s", fields["tier"].Catalog)
+	}
+}
+
+func TestLoadJsonnet_MixedFieldCompat(t *testing.T) {
+	content := `{
+  version: 1,
+  sync_id: "compat-test",
+  pipelines: [
+    {
+      sources: [
+        {
+          "local": {
+            files: ["*.yaml"],
+          },
+        },
+      ],
+      outputs: [
+        {
+          catalog: "Services",
+          external_id: "{{ .id }}",
+          name: "{{ .name }}",
+          fields: {
+            owner: {value: "{{ .owner }}"},
+            tier: {value: "{{ .tier }}", kind: "reference", catalog: "Tiers"},
+          },
+        },
+      ],
+    },
+  ],
+}`
+	path := filepath.Join(t.TempDir(), "config.jsonnet")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	fields := cfg.Pipelines[0].Outputs[0].Fields
+	if fields["owner"].Value != "{{ .owner }}" {
+		t.Errorf("expected {{ .owner }}, got %s", fields["owner"].Value)
+	}
+	if fields["tier"].Kind != "reference" {
+		t.Errorf("expected kind=reference, got %s", fields["tier"].Kind)
+	}
+	if fields["tier"].Catalog != "Tiers" {
+		t.Errorf("expected catalog=Tiers, got %s", fields["tier"].Catalog)
 	}
 }

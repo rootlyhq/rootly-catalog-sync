@@ -35,10 +35,10 @@ func MapEntries(entries []source.Entry, out config.Output) ([]catalog.DesiredEnt
 		}
 
 		fields := make(map[string]string, len(out.Fields))
-		for slug, tpl := range out.Fields {
-			val, err := tmpl.Eval(tpl, entry)
+		for slug, fv := range out.Fields {
+			val, err := tmpl.Eval(fv.Value, entry)
 			if err != nil {
-				return nil, fmt.Errorf("entry %d: evaluating field %q: %w", i, slug, err)
+				return nil, fmt.Errorf("entry %d: evaluating field %q: %w", i+1, slug, err)
 			}
 			fields[slug] = val
 		}

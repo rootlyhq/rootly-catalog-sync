@@ -14,8 +14,8 @@ func TestMapEntriesSimple(t *testing.T) {
 	out := config.Output{
 		ExternalID: "{{ .id }}",
 		Name:       "{{ .name }}",
-		Fields: map[string]string{
-			"tier": "{{ .tier }}",
+		Fields: map[string]config.FieldValue{
+			"tier": {Value: "{{ .tier }}"},
 		},
 	}
 

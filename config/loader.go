@@ -195,6 +195,17 @@ func ctyToGo(v cty.Value) any {
 	}
 }
 
+var validFieldKinds = map[string]bool{
+	"text": true, "number": true, "boolean": true, "reference": true,
+	"service": true, "group": true, "functionality": true, "environment": true,
+	"incident_type": true, "cause": true, "user": true,
+	"slack_channel": true, "slack_alias": true,
+}
+
+func validFieldKind(kind string) bool {
+	return validFieldKinds[kind]
+}
+
 func Validate(cfg *Config) error {
 	if cfg.Version != 1 {
 		return fmt.Errorf("unsupported config version: %d (expected 1)", cfg.Version)
@@ -222,6 +233,17 @@ func Validate(cfg *Config) error {
 			}
 			if o.Name == "" {
 				return fmt.Errorf("pipeline[%d].outputs[%d]: name is required", i, j)
+			}
+			for slug, fv := range o.Fields {
+				if fv.Value == "" {
+					return fmt.Errorf("pipeline[%d].outputs[%d].fields[%s]: value is required", i, j, slug)
+				}
+				if fv.Kind != "" && !validFieldKind(fv.Kind) {
+					return fmt.Errorf("pipeline[%d].outputs[%d].fields[%s]: unsupported kind %q (valid: text, number, boolean, reference, service, group, functionality, environment, incident_type, cause, user, slack_channel, slack_alias)", i, j, slug, fv.Kind)
+				}
+				if fv.Kind == "reference" && fv.Catalog == "" {
+					return fmt.Errorf("pipeline[%d].outputs[%d].fields[%s]: catalog is required when kind is reference", i, j, slug)
+				}
 			}
 		}
 	}

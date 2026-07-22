@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/oapi-codegen/nullable"
 	rootly "github.com/rootlyhq/rootly-go"
@@ -44,10 +42,14 @@ const (
 	attrAlertsEmailEnabled = "alerts_email_enabled"
 )
 
-// Known writable attributes per native resource type. Fields matching these
-// keys are set directly on the SDK struct; everything else goes into the
-// catalog Fields array.
-var nativeKnownAttrs = map[string]map[string]bool{
+// NativeKnownAttrs returns the known writable attributes for a native resource type.
+func NativeKnownAttrs(resourceType string) map[string]bool {
+	return nativeKnownAttrsMap[resourceType]
+}
+
+// Fields matching these keys are set directly on the SDK struct; everything
+// else goes into the catalog Fields array.
+var nativeKnownAttrsMap = map[string]map[string]bool{
 	NativeService: {
 		attrDescription: true, attrColor: true, attrBackstageID: true, attrCortexID: true,
 		attrOpsgenieID: true, attrOpsgenieTeamID: true, attrOpslevelID: true,
@@ -98,27 +100,198 @@ func resourceTypePlural(t string) string {
 }
 
 // ---------------------------------------------------------------------------
+// Native Properties (catalog fields on native resource types)
+// ---------------------------------------------------------------------------
+
+type NativePropertyInfo struct {
+	ID            string
+	Name          string
+	Slug          string
+	Kind          string
+	KindCatalogID string
+}
+
+func (c *Client) ListNativeProperties(ctx context.Context, resourceType string) ([]NativePropertyInfo, error) {
+	var props []NativePropertyInfo
+	page := 1
+	for {
+		body, statusCode, err := c.listNativePropertiesPage(ctx, resourceType, page)
+		if err != nil {
+			return nil, err
+		}
+		if statusCode != 200 {
+			return nil, fmt.Errorf("listing %s properties: unexpected status %d", resourceType, statusCode)
+		}
+
+		var parsed rootly.CatalogPropertyList
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return nil, fmt.Errorf("decoding %s properties: %w", resourceType, err)
+		}
+
+		for _, r := range parsed.Data {
+			slug := ""
+			if r.Attributes.Slug != nil {
+				slug = *r.Attributes.Slug
+			}
+			kindCatalogID := ""
+			if r.Attributes.KindCatalogID.IsSpecified() && !r.Attributes.KindCatalogID.IsNull() {
+				kindCatalogID = r.Attributes.KindCatalogID.MustGet()
+			}
+			props = append(props, NativePropertyInfo{
+				ID:            r.ID,
+				Name:          r.Attributes.Name,
+				Slug:          slug,
+				Kind:          string(r.Attributes.Kind),
+				KindCatalogID: kindCatalogID,
+			})
+		}
+
+		currentPage := 0
+		if parsed.Meta.CurrentPage.IsSpecified() && !parsed.Meta.CurrentPage.IsNull() {
+			currentPage = parsed.Meta.CurrentPage.MustGet()
+		}
+		if len(parsed.Data) == 0 || currentPage >= parsed.Meta.TotalPages {
+			break
+		}
+		page++
+	}
+	return props, nil
+}
+
+func (c *Client) listNativePropertiesPage(ctx context.Context, resourceType string, page int) ([]byte, int, error) {
+	pageSize := DefaultPageSize
+	switch resourceType {
+	case NativeService:
+		resp, err := c.sdk.ListServiceCatalogPropertiesWithResponse(ctx, &rootly.ListServiceCatalogPropertiesParams{
+			PageNumber: &page, PageSize: &pageSize,
+		})
+		if err != nil {
+			return nil, 0, fmt.Errorf("listing %s properties: %w", resourceType, err)
+		}
+		return resp.Body, resp.StatusCode(), nil
+	case NativeFunctionality:
+		resp, err := c.sdk.ListFunctionalityCatalogPropertiesWithResponse(ctx, &rootly.ListFunctionalityCatalogPropertiesParams{
+			PageNumber: &page, PageSize: &pageSize,
+		})
+		if err != nil {
+			return nil, 0, fmt.Errorf("listing %s properties: %w", resourceType, err)
+		}
+		return resp.Body, resp.StatusCode(), nil
+	case NativeEnvironment:
+		resp, err := c.sdk.ListEnvironmentCatalogPropertiesWithResponse(ctx, &rootly.ListEnvironmentCatalogPropertiesParams{
+			PageNumber: &page, PageSize: &pageSize,
+		})
+		if err != nil {
+			return nil, 0, fmt.Errorf("listing %s properties: %w", resourceType, err)
+		}
+		return resp.Body, resp.StatusCode(), nil
+	case NativeTeam:
+		resp, err := c.sdk.ListGroupCatalogPropertiesWithResponse(ctx, &rootly.ListGroupCatalogPropertiesParams{
+			PageNumber: &page, PageSize: &pageSize,
+		})
+		if err != nil {
+			return nil, 0, fmt.Errorf("listing %s properties: %w", resourceType, err)
+		}
+		return resp.Body, resp.StatusCode(), nil
+	default:
+		return nil, 0, fmt.Errorf("unsupported native resource type: %s", resourceType)
+	}
+}
+
+func (c *Client) EnsureNativeProperty(ctx context.Context, resourceType, name, kind, kindCatalogID string) error {
+	body := rootly.NewCatalogProperty{}
+	body.Data.Type = rootly.NewCatalogPropertyDataTypeCatalogProperties
+	body.Data.Attributes.Name = name
+	body.Data.Attributes.Kind = rootly.NewCatalogPropertyDataAttributesKind(kind)
+	if kindCatalogID != "" {
+		body.Data.Attributes.KindCatalogID = nullable.NewNullableWithValue(kindCatalogID)
+	}
+
+	var statusCode int
+	switch resourceType {
+	case NativeService:
+		resp, err := c.sdk.CreateServiceCatalogPropertyWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
+		if err != nil {
+			return fmt.Errorf("creating %s property %q: %w", resourceType, name, err)
+		}
+		statusCode = resp.StatusCode()
+	case NativeFunctionality:
+		resp, err := c.sdk.CreateFunctionalityCatalogPropertyWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
+		if err != nil {
+			return fmt.Errorf("creating %s property %q: %w", resourceType, name, err)
+		}
+		statusCode = resp.StatusCode()
+	case NativeEnvironment:
+		resp, err := c.sdk.CreateEnvironmentCatalogPropertyWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
+		if err != nil {
+			return fmt.Errorf("creating %s property %q: %w", resourceType, name, err)
+		}
+		statusCode = resp.StatusCode()
+	case NativeTeam:
+		resp, err := c.sdk.CreateGroupCatalogPropertyWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
+		if err != nil {
+			return fmt.Errorf("creating %s property %q: %w", resourceType, name, err)
+		}
+		statusCode = resp.StatusCode()
+	default:
+		return fmt.Errorf("unsupported native resource type: %s", resourceType)
+	}
+
+	if statusCode != 201 {
+		return fmt.Errorf("creating %s property %q: unexpected status %d", resourceType, name, statusCode)
+	}
+	return nil
+}
+
+// NativePropertyMap builds a slug-to-info map from a property list.
+func NativePropertyMap(props []NativePropertyInfo) map[string]NativePropertyInfo {
+	m := make(map[string]NativePropertyInfo, len(props))
+	for _, p := range props {
+		m[p.Slug] = p
+	}
+	return m
+}
+
+// NativePropertyIDToSlug builds a property-UUID-to-slug map for read-back resolution.
+func NativePropertyIDToSlug(props []NativePropertyInfo) map[string]string {
+	m := make(map[string]string, len(props))
+	for _, p := range props {
+		m[p.ID] = p.Slug
+	}
+	return m
+}
+
+// ---------------------------------------------------------------------------
 // List
 // ---------------------------------------------------------------------------
 
 // ListNativeResources lists all resources of the given native type, paginating
 // through the API until all pages are fetched.
 func (c *Client) ListNativeResources(ctx context.Context, resourceType string) ([]catalog.LiveEntity, error) {
+	propIDToSlug, err := c.nativePropIDToSlug(ctx, resourceType)
+	if err != nil {
+		return nil, err
+	}
+	return c.ListNativeResourcesWithProps(ctx, resourceType, propIDToSlug)
+}
+
+// ListNativeResourcesWithProps lists native resources using a pre-fetched property map.
+func (c *Client) ListNativeResourcesWithProps(ctx context.Context, resourceType string, propIDToSlug map[string]string) ([]catalog.LiveEntity, error) {
 	switch resourceType {
 	case NativeService:
-		return c.listServices(ctx)
+		return c.listServices(ctx, propIDToSlug)
 	case NativeFunctionality:
-		return c.listFunctionalities(ctx)
+		return c.listFunctionalities(ctx, propIDToSlug)
 	case NativeEnvironment:
-		return c.listEnvironments(ctx)
+		return c.listEnvironments(ctx, propIDToSlug)
 	case NativeTeam:
-		return c.listTeams(ctx)
+		return c.listTeams(ctx, propIDToSlug)
 	default:
 		return nil, fmt.Errorf("unsupported native resource type: %s", resourceType)
 	}
 }
 
-func (c *Client) listServices(ctx context.Context) ([]catalog.LiveEntity, error) {
+func (c *Client) listServices(ctx context.Context, propIDToSlug map[string]string) ([]catalog.LiveEntity, error) {
 	var entities []catalog.LiveEntity
 	page := 1
 	for {
@@ -135,7 +308,7 @@ func (c *Client) listServices(ctx context.Context) ([]catalog.LiveEntity, error)
 		}
 		data := resp.ApplicationVndAPIJSON200
 		for _, r := range data.Data {
-			entities = append(entities, serviceToLive(r.ID, r.Attributes))
+			entities = append(entities, serviceToLive(r.ID, r.Attributes, propIDToSlug))
 		}
 		currentPage := 0
 		if data.Meta.CurrentPage.IsSpecified() && !data.Meta.CurrentPage.IsNull() {
@@ -149,7 +322,7 @@ func (c *Client) listServices(ctx context.Context) ([]catalog.LiveEntity, error)
 	return entities, nil
 }
 
-func serviceToLive(id string, s rootly.Service) catalog.LiveEntity {
+func serviceToLive(id string, s rootly.Service, propIDToSlug map[string]string) catalog.LiveEntity {
 	ent := catalog.LiveEntity{
 		ID:     id,
 		Name:   s.Name,
@@ -176,11 +349,12 @@ func serviceToLive(id string, s rootly.Service) catalog.LiveEntity {
 	setNullableStr(s.GitlabRepositoryBranch, "gitlab_repository_branch", ent.Fields)
 	setNullableStr(s.KubernetesDeploymentName, "kubernetes_deployment_name", ent.Fields)
 	setNullableBool(s.AlertsEmailEnabled, attrAlertsEmailEnabled, ent.Fields)
+	readProperties(s.Properties, propIDToSlug, ent.Fields)
 
 	return ent
 }
 
-func (c *Client) listFunctionalities(ctx context.Context) ([]catalog.LiveEntity, error) {
+func (c *Client) listFunctionalities(ctx context.Context, propIDToSlug map[string]string) ([]catalog.LiveEntity, error) {
 	var entities []catalog.LiveEntity
 	page := 1
 	for {
@@ -197,7 +371,7 @@ func (c *Client) listFunctionalities(ctx context.Context) ([]catalog.LiveEntity,
 		}
 		data := resp.ApplicationVndAPIJSON200
 		for _, r := range data.Data {
-			entities = append(entities, functionalityToLive(r.ID, r.Attributes))
+			entities = append(entities, functionalityToLive(r.ID, r.Attributes, propIDToSlug))
 		}
 		currentPage := 0
 		if data.Meta.CurrentPage.IsSpecified() && !data.Meta.CurrentPage.IsNull() {
@@ -211,7 +385,7 @@ func (c *Client) listFunctionalities(ctx context.Context) ([]catalog.LiveEntity,
 	return entities, nil
 }
 
-func functionalityToLive(id string, f rootly.Functionality) catalog.LiveEntity {
+func functionalityToLive(id string, f rootly.Functionality, propIDToSlug map[string]string) catalog.LiveEntity {
 	ent := catalog.LiveEntity{
 		ID:     id,
 		Name:   f.Name,
@@ -235,11 +409,12 @@ func functionalityToLive(id string, f rootly.Functionality) catalog.LiveEntity {
 	setNullableStr(f.OpsgenieTeamID, attrOpsgenieTeamID, ent.Fields)
 	setNullableStr(f.PagerdutyID, attrPagerdutyID, ent.Fields)
 	setNullableStr(f.ServiceNowCiSysID, attrServiceNowCiSysID, ent.Fields)
+	readProperties(f.Properties, propIDToSlug, ent.Fields)
 
 	return ent
 }
 
-func (c *Client) listEnvironments(ctx context.Context) ([]catalog.LiveEntity, error) {
+func (c *Client) listEnvironments(ctx context.Context, propIDToSlug map[string]string) ([]catalog.LiveEntity, error) {
 	var entities []catalog.LiveEntity
 	page := 1
 	for {
@@ -256,7 +431,7 @@ func (c *Client) listEnvironments(ctx context.Context) ([]catalog.LiveEntity, er
 		}
 		data := resp.ApplicationVndAPIJSON200
 		for _, r := range data.Data {
-			entities = append(entities, environmentToLive(r.ID, r.Attributes))
+			entities = append(entities, environmentToLive(r.ID, r.Attributes, propIDToSlug))
 		}
 		currentPage := 0
 		if data.Meta.CurrentPage.IsSpecified() && !data.Meta.CurrentPage.IsNull() {
@@ -270,7 +445,7 @@ func (c *Client) listEnvironments(ctx context.Context) ([]catalog.LiveEntity, er
 	return entities, nil
 }
 
-func environmentToLive(id string, e rootly.Environment) catalog.LiveEntity {
+func environmentToLive(id string, e rootly.Environment, propIDToSlug map[string]string) catalog.LiveEntity {
 	ent := catalog.LiveEntity{
 		ID:     id,
 		Name:   e.Name,
@@ -289,11 +464,12 @@ func environmentToLive(id string, e rootly.Environment) catalog.LiveEntity {
 
 	setNullableStr(e.Color, attrColor, ent.Fields)
 	setNullableInt(e.Position, "position", ent.Fields)
+	readProperties(e.Properties, propIDToSlug, ent.Fields)
 
 	return ent
 }
 
-func (c *Client) listTeams(ctx context.Context) ([]catalog.LiveEntity, error) {
+func (c *Client) listTeams(ctx context.Context, propIDToSlug map[string]string) ([]catalog.LiveEntity, error) {
 	var entities []catalog.LiveEntity
 	page := 1
 	for {
@@ -310,7 +486,7 @@ func (c *Client) listTeams(ctx context.Context) ([]catalog.LiveEntity, error) {
 		}
 		data := resp.ApplicationVndAPIJSON200
 		for _, r := range data.Data {
-			entities = append(entities, teamToLive(r.ID, r.Attributes))
+			entities = append(entities, teamToLive(r.ID, r.Attributes, propIDToSlug))
 		}
 		currentPage := 0
 		if data.Meta.CurrentPage.IsSpecified() && !data.Meta.CurrentPage.IsNull() {
@@ -324,7 +500,7 @@ func (c *Client) listTeams(ctx context.Context) ([]catalog.LiveEntity, error) {
 	return entities, nil
 }
 
-func teamToLive(id string, t rootly.Team) catalog.LiveEntity {
+func teamToLive(id string, t rootly.Team, propIDToSlug map[string]string) catalog.LiveEntity {
 	ent := catalog.LiveEntity{
 		ID:     id,
 		Name:   t.Name,
@@ -351,8 +527,32 @@ func teamToLive(id string, t rootly.Team) catalog.LiveEntity {
 	setNullableStr(t.VictorOpsID, attrVictorOpsID, ent.Fields)
 	setNullableStr(t.ServiceNowCiSysID, attrServiceNowCiSysID, ent.Fields)
 	setNullableBool(t.AlertsEmailEnabled, attrAlertsEmailEnabled, ent.Fields)
+	readProperties(t.Properties, propIDToSlug, ent.Fields)
 
 	return ent
+}
+
+func (c *Client) nativePropIDToSlug(ctx context.Context, resourceType string) (map[string]string, error) {
+	props, err := c.ListNativeProperties(ctx, resourceType)
+	if err != nil {
+		return nil, err
+	}
+	return NativePropertyIDToSlug(props), nil
+}
+
+func readProperties(props nullable.Nullable[[]struct {
+	CatalogPropertyID string `json:"catalog_property_id"`
+	Value             string `json:"value"`
+}], propIDToSlug map[string]string, fields map[string]string) {
+	if !props.IsSpecified() || props.IsNull() {
+		return
+	}
+	for _, p := range props.MustGet() {
+		slug := propIDToSlug[p.CatalogPropertyID]
+		if slug != "" {
+			fields[slug] = p.Value
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -391,10 +591,6 @@ func (c *Client) BulkUpsertNative(ctx context.Context, resourceType string, ents
 		return nil, fmt.Errorf("unsupported native resource type: %s", resourceType)
 	}
 
-	if err := validateNativeFields(resourceType, ents); err != nil {
-		return nil, err
-	}
-
 	result := &BulkResult{}
 	for i := 0; i < len(ents); i += MaxBatchSize {
 		end := i + MaxBatchSize
@@ -414,7 +610,7 @@ func (c *Client) BulkUpsertNative(ctx context.Context, resourceType string, ents
 }
 
 func (c *Client) bulkUpsertNativeBatch(ctx context.Context, resourceType string, batch []catalog.DesiredEntity) (*BulkResult, error) {
-	known := nativeKnownAttrs[resourceType]
+	known := nativeKnownAttrsMap[resourceType]
 
 	switch resourceType {
 	case NativeService:
@@ -428,33 +624,6 @@ func (c *Client) bulkUpsertNativeBatch(ctx context.Context, resourceType string,
 	default:
 		return nil, fmt.Errorf("unsupported native resource type: %s", resourceType)
 	}
-}
-
-func validateNativeFields(resourceType string, ents []catalog.DesiredEntity) error {
-	known := nativeKnownAttrs[resourceType]
-	unsupported := make(map[string]bool)
-	for _, e := range ents {
-		for k := range e.Fields {
-			if !known[k] {
-				unsupported[k] = true
-			}
-		}
-	}
-	if len(unsupported) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(unsupported))
-	for k := range unsupported {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	supported := make([]string, 0, len(known))
-	for k := range known {
-		supported = append(supported, k)
-	}
-	sort.Strings(supported)
-	return fmt.Errorf("unsupported fields for native %s: %s\n  Supported fields: %s\n  Hint: for custom fields, use catalog entities (catalog: \"Name\") instead of native resources (type: %s)",
-		resourceType, strings.Join(names, ", "), strings.Join(supported, ", "), resourceType)
 }
 
 // catalogFields builds the Fields array for any fields not in the known attrs set.

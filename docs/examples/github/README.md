@@ -35,9 +35,12 @@ pipelines:
         external_id: "{{ .id }}"
         name: "{{ .name }}"
         fields:
-          owner: "{{ .owner }}"
-          tier: "{{ default .tier \"3\" }}"
-          description: "{{ default .description \"\" }}"
+          owner:
+            value: "{{ .owner }}"
+          tier:
+            value: "{{ default .tier \"3\" }}"
+          description:
+            value: "{{ default .description \"\" }}"
 ```
 
 ## How it works

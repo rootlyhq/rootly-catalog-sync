@@ -39,12 +39,13 @@ type CatalogSpec struct {
 }
 
 type FieldSpec struct {
-	Name       string
-	Kind       string
-	ExternalID string
-	Slug       string
-	Multiple   bool
-	Required   bool
+	Name          string
+	Kind          string
+	ExternalID    string
+	Slug          string
+	KindCatalogID string
+	Multiple      bool
+	Required      bool
 }
 
 type BulkResult struct {
@@ -73,6 +74,16 @@ type CatalogInfo struct {
 	ID   string
 	Name string
 	Slug string
+}
+
+var sdkCreatableKinds = map[string]bool{
+	"text": true, "boolean": true, "reference": true,
+	"service": true, "group": true, "functionality": true, "environment": true,
+	"incident_type": true, "cause": true, "user": true,
+}
+
+func sdkCreatableKind(kind string) bool {
+	return sdkCreatableKinds[kind]
 }
 
 type Option func(*Client)
@@ -303,13 +314,23 @@ func (c *Client) EnsureFields(ctx context.Context, catalogID string, fields []Fi
 		return err
 	}
 
-	existingByName := make(map[string]bool, len(existing))
+	existingByName := make(map[string]fieldInfo, len(existing))
 	for _, f := range existing {
-		existingByName[f.Name] = true
+		existingByName[f.Name] = f
 	}
 
 	for _, f := range fields {
-		if existingByName[f.Name] {
+		if ef, exists := existingByName[f.Name]; exists {
+			kind := f.Kind
+			if kind == "" {
+				kind = "text"
+			}
+			if ef.Kind != kind {
+				return fmt.Errorf("field %q exists with kind %q but config declares kind %q", f.Name, ef.Kind, kind)
+			}
+			if kind == "reference" && f.KindCatalogID != "" && ef.KindCatalogID != "" && ef.KindCatalogID != f.KindCatalogID {
+				return fmt.Errorf("field %q references catalog %s but config expects %s", f.Name, ef.KindCatalogID, f.KindCatalogID)
+			}
 			continue
 		}
 
@@ -318,12 +339,19 @@ func (c *Client) EnsureFields(ctx context.Context, catalogID string, fields []Fi
 			kind = "text"
 		}
 
+		if !sdkCreatableKind(kind) {
+			return fmt.Errorf("field %q has kind %q which cannot be auto-created — create it in the Rootly UI first", f.Name, kind)
+		}
+
 		body := rootly.NewCatalogField{}
 		body.Data.Type = rootly.NewCatalogFieldDataTypeCatalogProperties
 		body.Data.Attributes.Name = f.Name
 		body.Data.Attributes.Kind = rootly.NewCatalogFieldDataAttributesKind(kind)
 		body.Data.Attributes.Multiple = &f.Multiple
 		body.Data.Attributes.Required = &f.Required
+		if f.KindCatalogID != "" {
+			body.Data.Attributes.KindCatalogID = nullable.NewNullableWithValue(f.KindCatalogID)
+		}
 
 		resp, err := c.sdk.CreateCatalogPropertyWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, catalogID, body)
 		if err != nil {
@@ -339,9 +367,11 @@ func (c *Client) EnsureFields(ctx context.Context, catalogID string, fields []Fi
 }
 
 type fieldInfo struct {
-	ID   string
-	Name string
-	Slug string
+	ID            string
+	Name          string
+	Slug          string
+	Kind          string
+	KindCatalogID string
 }
 
 func (c *Client) listFields(ctx context.Context, catalogID string) ([]fieldInfo, error) {
@@ -365,10 +395,16 @@ func (c *Client) listFields(ctx context.Context, catalogID string) ([]fieldInfo,
 		if r.Attributes.Slug != nil {
 			slug = *r.Attributes.Slug
 		}
+		kindCatalogID := ""
+		if r.Attributes.KindCatalogID.IsSpecified() && !r.Attributes.KindCatalogID.IsNull() {
+			kindCatalogID = r.Attributes.KindCatalogID.MustGet()
+		}
 		fields = append(fields, fieldInfo{
-			ID:   r.ID,
-			Name: r.Attributes.Name,
-			Slug: slug,
+			ID:            r.ID,
+			Name:          r.Attributes.Name,
+			Slug:          slug,
+			Kind:          string(r.Attributes.Kind),
+			KindCatalogID: kindCatalogID,
 		})
 	}
 

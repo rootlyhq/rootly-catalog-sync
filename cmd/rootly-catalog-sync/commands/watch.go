@@ -53,15 +53,14 @@ func runWatch(cmd *cobra.Command, args []string) error {
 }
 
 func runSyncOnce(ctx context.Context, cfg *config.Config, cl *client.Client, baseDir string) error {
-	results, err := reconcileAll(ctx, cfg, cl, baseDir, allowPrune, pruneThreshold)
-	if err != nil {
-		return err
-	}
-
-	for _, r := range results {
+	applyEach := func(ctx context.Context, r PlanResult) error {
+		catalogName := r.Output.Catalog
+		if catalogName == "" {
+			catalogName = r.Output.Type
+		}
 		if r.Plan.Counts.IsNoop() {
-			fmt.Printf("[%s] %s: in sync\n", time.Now().Format("15:04:05"), r.Output.Catalog)
-			continue
+			fmt.Printf("[%s] %s: in sync\n", time.Now().Format("15:04:05"), catalogName)
+			return nil
 		}
 
 		catalogsync.FormatPlan(os.Stdout, r.Plan)
@@ -72,8 +71,11 @@ func runSyncOnce(ctx context.Context, cfg *config.Config, cl *client.Client, bas
 		}
 
 		fmt.Printf("[%s] %s: %d created, %d updated, %d deleted\n",
-			time.Now().Format("15:04:05"), r.Output.Catalog,
+			time.Now().Format("15:04:05"), catalogName,
 			r.Plan.Counts.Create, r.Plan.Counts.Update, r.Plan.Counts.Delete)
+		return nil
 	}
-	return nil
+
+	_, err := reconcileAll(ctx, cfg, cl, baseDir, allowPrune, pruneThreshold, withApplyEach(applyEach), withCanMutate())
+	return err
 }

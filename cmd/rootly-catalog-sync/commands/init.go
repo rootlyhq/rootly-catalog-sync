@@ -21,8 +21,10 @@ pipelines:
         external_id: "{{ .id }}"
         name: "{{ .name }}"
         fields:
-          owner: "{{ .owner }}"
-          tier: "{{ .tier }}"
+          owner:
+            value: "{{ .owner }}"
+          tier:
+            value: "{{ .tier }}"
 `
 
 var interactive bool

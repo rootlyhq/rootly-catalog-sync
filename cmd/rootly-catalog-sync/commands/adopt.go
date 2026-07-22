@@ -50,6 +50,10 @@ func runAdopt(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("ensuring catalog %q: %w", out.Catalog, err)
 			}
 
+			if err := resolveReferenceFields(ctx, cl, out, desired); err != nil {
+				return fmt.Errorf("resolving reference fields: %w", err)
+			}
+
 			live, err := cl.ListEntities(ctx, catalogID)
 			if err != nil {
 				return fmt.Errorf("listing entities: %w", err)

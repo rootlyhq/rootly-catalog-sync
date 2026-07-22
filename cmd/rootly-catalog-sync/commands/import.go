@@ -47,6 +47,10 @@ func runImport(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("ensuring fields: %w", err)
 			}
 
+			if err := resolveReferenceFields(ctx, cl, out, desired); err != nil {
+				return fmt.Errorf("resolving reference fields: %w", err)
+			}
+
 			importEnts := make([]catalog.DesiredEntity, len(desired))
 			for i, d := range desired {
 				importEnts[i] = catalog.DesiredEntity{

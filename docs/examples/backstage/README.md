@@ -33,10 +33,14 @@ pipelines:
         external_id: "{{ get .metadata \"name\" }}"
         name: "{{ get .metadata \"name\" }}"
         fields:
-          kind: "{{ .kind }}"
-          owner: "{{ get .spec \"owner\" }}"
-          lifecycle: "{{ get .spec \"lifecycle\" }}"
-          type: "{{ default (get .spec \"type\") \"\" }}"
+          kind:
+            value: "{{ .kind }}"
+          owner:
+            value: "{{ get .spec \"owner\" }}"
+          lifecycle:
+            value: "{{ get .spec \"lifecycle\" }}"
+          type:
+            value: "{{ default (get .spec \"type\") \"\" }}"
 ```
 
 ## How it works
@@ -87,7 +91,8 @@ pipelines:
         external_id: "{{ get .metadata \"name\" }}"
         name: "{{ get .metadata \"name\" }}"
         fields:
-          owner: "{{ get .spec \"owner\" }}"
+          owner:
+            value: "{{ get .spec \"owner\" }}"
 
   - sources:
       - backstage:
@@ -99,5 +104,6 @@ pipelines:
         external_id: "{{ get .metadata \"name\" }}"
         name: "{{ get .metadata \"name\" }}"
         fields:
-          owner: "{{ get .spec \"owner\" }}"
+          owner:
+            value: "{{ get .spec \"owner\" }}"
 ```

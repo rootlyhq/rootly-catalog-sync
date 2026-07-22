@@ -575,7 +575,8 @@ func (m WizardModel) generateYAML() string {
 	if len(m.fields) > 0 {
 		b.WriteString("        fields:\n")
 		for _, f := range m.fields {
-			_, _ = fmt.Fprintf(&b, "          %s: %q\n", f.slug, f.template)
+			_, _ = fmt.Fprintf(&b, "          %s:\n", f.slug)
+			_, _ = fmt.Fprintf(&b, "            value: %q\n", f.template)
 		}
 	}
 
@@ -602,7 +603,7 @@ func (m WizardModel) generateJsonnet() string {
 	if len(m.fields) > 0 {
 		b.WriteString("          fields: {\n")
 		for _, f := range m.fields {
-			_, _ = fmt.Fprintf(&b, "            %s: %q,\n", f.slug, f.template)
+			_, _ = fmt.Fprintf(&b, "            %s: {value: %q},\n", f.slug, f.template)
 		}
 		b.WriteString("          },\n")
 	}
@@ -632,7 +633,9 @@ func (m WizardModel) generateHCL() string {
 	if len(m.fields) > 0 {
 		b.WriteString("    fields = {\n")
 		for _, f := range m.fields {
-			_, _ = fmt.Fprintf(&b, "      %s = %q\n", f.slug, f.template)
+			_, _ = fmt.Fprintf(&b, "      %s = {\n", f.slug)
+			_, _ = fmt.Fprintf(&b, "        value = %q\n", f.template)
+			b.WriteString("      }\n")
 		}
 		b.WriteString("    }\n")
 	}

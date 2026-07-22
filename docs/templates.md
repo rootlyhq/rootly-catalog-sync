@@ -10,8 +10,10 @@ Reference top-level fields with dot notation:
 external_id: "{{ .id }}"
 name: "{{ .name }}"
 fields:
-  owner: "{{ .owner }}"
-  tier: "{{ .tier }}"
+  owner:
+    value: "{{ .owner }}"
+  tier:
+    value: "{{ .tier }}"
 ```
 
 Given the source entry:
@@ -60,8 +62,10 @@ Return a fallback when a field is nil or empty:
 
 ```yaml
 fields:
-  tier: "{{ default .tier \"unknown\" }}"
-  region: "{{ default .region \"us-east-1\" }}"
+  tier:
+    value: "{{ default .tier \"unknown\" }}"
+  region:
+    value: "{{ default .region \"us-east-1\" }}"
 ```
 
 | `.tier` value | Result |
@@ -87,7 +91,8 @@ This is intentional -- it catches typos and schema mismatches early rather than 
 
 ```yaml
 fields:
-  description: "{{ default .description \"\" }}"
+  description:
+    value: "{{ default .description \"\" }}"
 ```
 
 ## Static values
@@ -96,8 +101,10 @@ Templates can produce static strings:
 
 ```yaml
 fields:
-  source: "catalog-sync"
-  environment: "production"
+  source:
+    value: "catalog-sync"
+  environment:
+    value: "production"
 ```
 
 No `{{ }}` delimiters needed -- the value is used as-is.
@@ -112,7 +119,8 @@ external_id: "{{ .org }}/{{ .name }}"
 
 # Conditional
 fields:
-  tier: "{{ if .critical }}1{{ else }}3{{ end }}"
+  tier:
+    value: "{{ if .critical }}1{{ else }}3{{ end }}"
 ```
 
 ## Template caching
@@ -135,10 +143,14 @@ outputs:
     external_id: "{{ get .metadata \"name\" }}"
     name: "{{ get .metadata \"name\" }}"
     fields:
-      kind: "{{ .kind }}"
-      owner: "{{ get .spec \"owner\" }}"
-      lifecycle: "{{ get .spec \"lifecycle\" }}"
-      system: "{{ default (get .spec \"system\") \"\" }}"
+      kind:
+        value: "{{ .kind }}"
+      owner:
+        value: "{{ get .spec \"owner\" }}"
+      lifecycle:
+        value: "{{ get .spec \"lifecycle\" }}"
+      system:
+        value: "{{ default (get .spec \"system\") \"\" }}"
 ```
 
 ### GitHub repo metadata
@@ -149,9 +161,12 @@ outputs:
     external_id: "{{ .full_name }}"
     name: "{{ .name }}"
     fields:
-      language: "{{ default .language \"unknown\" }}"
-      visibility: "{{ .visibility }}"
-      default_branch: "{{ .default_branch }}"
+      language:
+        value: "{{ default .language \"unknown\" }}"
+      visibility:
+        value: "{{ .visibility }}"
+      default_branch:
+        value: "{{ .default_branch }}"
 ```
 
 ### CSV with header mapping
@@ -168,8 +183,10 @@ outputs:
     external_id: "{{ .id }}"
     name: "{{ .name }}"
     fields:
-      owner: "{{ .owner }}"
-      tier: "{{ .tier }}"
+      owner:
+        value: "{{ .owner }}"
+      tier:
+        value: "{{ .tier }}"
 ```
 
 CSV headers become the field names in the source entry.
@@ -182,6 +199,8 @@ outputs:
     external_id: "{{ .service_id }}"
     name: "{{ .display_name }}"
     fields:
-      owner: "{{ .team_email }}"
-      tier: "{{ default .sla_tier \"3\" }}"
+      owner:
+        value: "{{ .team_email }}"
+      tier:
+        value: "{{ default .sla_tier \"3\" }}"
 ```

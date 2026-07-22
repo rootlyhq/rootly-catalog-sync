@@ -24,12 +24,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	results, err := reconcileAll(ctx, cfg, cl, baseDir, allowPrune, pruneThreshold)
-	if err != nil {
-		return err
-	}
-
-	for _, r := range results {
+	applyEach := func(ctx context.Context, r PlanResult) error {
 		if outputFormat == "json" {
 			data, err := catalogsync.PlanToJSON(r.Plan)
 			if err != nil {
@@ -44,11 +39,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 			if outputFormat != "json" {
 				fmt.Println("Already in sync.")
 			}
-			continue
+			return nil
 		}
 
 		if dryRun {
-			continue
+			return nil
 		}
 
 		applier := applierForOutput(cl, r.Output)
@@ -60,6 +55,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Applied: %d created, %d updated, %d deleted.\n",
 				r.Plan.Counts.Create, r.Plan.Counts.Update, r.Plan.Counts.Delete)
 		}
+		return nil
 	}
-	return nil
+
+	opts := []reconcileOption{withApplyEach(applyEach)}
+	if !dryRun {
+		opts = append(opts, withCanMutate())
+	}
+	_, err = reconcileAll(ctx, cfg, cl, baseDir, allowPrune, pruneThreshold, opts...)
+	return err
 }

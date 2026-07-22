@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/rootlyhq/rootly-catalog-sync/catalog"
@@ -15,6 +14,14 @@ import (
 func TestListNativeResources_Services(t *testing.T) {
 	callCount := 0
 	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/services/properties", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":  []any{},
+			"links": map[string]any{"first": "", "self": ""},
+			"meta":  map[string]any{"total_pages": 1, "current_page": 1, "total_count": 0},
+		})
+	})
 	mux.HandleFunc("/v1/services", func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		w.Header().Set("Content-Type", "application/vnd.api+json")
@@ -189,8 +196,23 @@ func TestBulkUpsertNative_Services(t *testing.T) {
 	}
 }
 
-func TestBulkUpsertNative_RejectsUnsupportedFields(t *testing.T) {
-	srv := httptest.NewServer(http.NewServeMux())
+func TestBulkUpsertNative_PassesUnknownFieldsAsCatalogFields(t *testing.T) {
+	var requestBodies []map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/services/bulk_upsert", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		requestBodies = append(requestBodies, body)
+
+		entities := body["entities"].([]any)
+		data := make([]map[string]any, len(entities))
+		for i, e := range entities {
+			ent := e.(map[string]any)
+			data[i] = map[string]any{"id": fmt.Sprintf("id-%d", i), "type": pluralServices, "attributes": ent}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+	})
+	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	c := New("test-key", WithBaseURL(srv.URL), WithMaxRetries(0))
@@ -207,19 +229,35 @@ func TestBulkUpsertNative_RejectsUnsupportedFields(t *testing.T) {
 		},
 	}
 
-	_, err := c.BulkUpsertNative(context.Background(), "service", ents)
-	if err == nil {
-		t.Fatal("expected error for unsupported fields")
+	result, err := c.BulkUpsertNative(context.Background(), "service", ents)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "custom_field") || !strings.Contains(errMsg, "owner") {
-		t.Errorf("expected error to list unsupported fields, got: %s", errMsg)
+	if result.Succeeded != 1 {
+		t.Errorf("expected 1 succeeded, got %d", result.Succeeded)
 	}
-	if !strings.Contains(errMsg, "Supported fields:") {
-		t.Errorf("expected error to list supported fields, got: %s", errMsg)
+
+	// Verify that description (a known attr) is set directly
+	first := requestBodies[0]["entities"].([]any)[0].(map[string]any)
+	if first["description"] != "ok" {
+		t.Errorf("expected known attr 'description' set directly, got %v", first["description"])
 	}
-	if !strings.Contains(errMsg, "Hint:") {
-		t.Errorf("expected hint about catalog entities, got: %s", errMsg)
+
+	// Verify that unknown fields (owner, custom_field) are sent as catalog fields
+	catalogFieldsList, ok := first["fields"].([]any)
+	if !ok {
+		t.Fatal("expected fields array for unknown attrs")
+	}
+	slugs := make(map[string]string)
+	for _, f := range catalogFieldsList {
+		fm := f.(map[string]any)
+		slugs[fm["catalog_field_id"].(string)] = fm["value"].(string)
+	}
+	if slugs["owner"] != "team-x" {
+		t.Errorf("expected owner=team-x in catalog fields, got %v", slugs["owner"])
+	}
+	if slugs["custom_field"] != "bad" {
+		t.Errorf("expected custom_field=bad in catalog fields, got %v", slugs["custom_field"])
 	}
 }
 

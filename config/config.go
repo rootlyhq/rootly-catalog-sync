@@ -1,5 +1,11 @@
 package config
 
+import (
+	"encoding/json"
+
+	"gopkg.in/yaml.v3"
+)
+
 type Config struct {
 	Version   int        `yaml:"version" json:"version" hcl:"version"`
 	SyncID    string     `yaml:"sync_id" json:"sync_id" hcl:"sync_id"`
@@ -85,10 +91,61 @@ type CSVSourceConfig struct {
 }
 
 type Output struct {
-	Type        string            `yaml:"type,omitempty" json:"type,omitempty" hcl:"type,optional"`
-	Catalog     string            `yaml:"catalog" json:"catalog" hcl:"catalog"`
-	ExternalID  string            `yaml:"external_id" json:"external_id" hcl:"external_id"`
-	Name        string            `yaml:"name" json:"name" hcl:"name"`
-	BackstageID string            `yaml:"backstage_id,omitempty" json:"backstage_id,omitempty" hcl:"backstage_id,optional"`
-	Fields      map[string]string `yaml:"fields,omitempty" json:"fields,omitempty" hcl:"fields,optional"`
+	Type        string                `yaml:"type,omitempty" json:"type,omitempty" hcl:"type,optional"`
+	Catalog     string                `yaml:"catalog" json:"catalog" hcl:"catalog"`
+	ExternalID  string                `yaml:"external_id" json:"external_id" hcl:"external_id"`
+	Name        string                `yaml:"name" json:"name" hcl:"name"`
+	BackstageID string                `yaml:"backstage_id,omitempty" json:"backstage_id,omitempty" hcl:"backstage_id,optional"`
+	Fields      map[string]FieldValue `yaml:"fields,omitempty" json:"fields,omitempty" hcl:"fields,optional"`
+}
+
+type FieldValue struct {
+	Value   string `yaml:"value" json:"value" hcl:"value"`
+	Kind    string `yaml:"kind,omitempty" json:"kind,omitempty" hcl:"kind,optional"`
+	Catalog string `yaml:"catalog,omitempty" json:"catalog,omitempty" hcl:"catalog,optional"`
+}
+
+func (f FieldValue) EffectiveKind() string {
+	if f.Kind == "" {
+		return "text"
+	}
+	return f.Kind
+}
+
+func (f *FieldValue) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		f.Value = node.Value
+		return nil
+	}
+	type raw FieldValue
+	return node.Decode((*raw)(f))
+}
+
+func (f *FieldValue) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		f.Value = s
+		return nil
+	}
+	type raw FieldValue
+	return json.Unmarshal(data, (*raw)(f))
+}
+
+func (f FieldValue) MarshalJSON() ([]byte, error) {
+	if f.Kind == "" && f.Catalog == "" {
+		return json.Marshal(f.Value)
+	}
+	type raw FieldValue
+	return json.Marshal((raw)(f))
+}
+
+func (f FieldValue) MarshalYAML() (any, error) {
+	if f.Kind == "" && f.Catalog == "" {
+		return f.Value, nil
+	}
+	return struct {
+		Value   string `yaml:"value"`
+		Kind    string `yaml:"kind,omitempty"`
+		Catalog string `yaml:"catalog,omitempty"`
+	}{f.Value, f.Kind, f.Catalog}, nil
 }

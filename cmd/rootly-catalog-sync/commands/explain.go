@@ -54,6 +54,10 @@ func runExplain(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
+			if err := resolveReferenceFields(ctx, cl, out, desired); err != nil {
+				return fmt.Errorf("resolving reference fields: %w", err)
+			}
+
 			fmt.Printf("Entry: %s\n", targetID)
 			if client.IsNativeResource(out.Type) {
 				fmt.Printf("  Type: %s\n", out.Type)

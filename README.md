@@ -89,8 +89,10 @@ pipelines:
         external_id: "{{ .id }}"
         name: "{{ .name }}"
         fields:
-          owner: "{{ .owner }}"
-          tier: "{{ .tier }}"
+          owner:
+            value: "{{ .owner }}"
+          tier:
+            value: "{{ .tier }}"
 ```
 
 Field mappings use Go templates. Built-in helpers: `{{ get .metadata "team" }}` for nested access, `{{ default .tier "unknown" }}` for fallbacks.
@@ -124,8 +126,8 @@ Jsonnet adds variables, functions, and imports for DRY configs:
           external_id: "{{ .id }}",
           name: "{{ .name }}",
           fields: {
-            owner: "{{ .owner }}",
-            tier: "{{ .tier }}",
+            owner: {value: "{{ .owner }}"},
+            tier: {value: "{{ .tier }}"},
           },
         },
       ],
@@ -158,8 +160,12 @@ pipeline {
     external_id = "{{ .id }}"
     name        = "{{ .name }}"
     fields = {
-      owner = "{{ .owner }}"
-      tier  = "{{ .tier }}"
+      owner = {
+        value = "{{ .owner }}"
+      }
+      tier = {
+        value = "{{ .tier }}"
+      }
     }
   }
 }
@@ -275,8 +281,10 @@ outputs:
     external_id: "{{ .id }}"
     name: "{{ .name }}"
     fields:
-      description: "{{ .description }}"
-      pagerduty_id: "{{ .pagerduty_id }}"
+      description:
+        value: "{{ .description }}"
+      pagerduty_id:
+        value: "{{ .pagerduty_id }}"
 ```
 
 | Type | API endpoint | Sentinel |
@@ -286,7 +294,7 @@ outputs:
 | `environment` | `/v1/environments/bulk_upsert` | ≥1 must remain |
 | `team` | `/v1/teams/bulk_upsert` | ≥1 must remain |
 
-When `type` is omitted or `"catalog"`, entities sync to custom catalogs (existing behavior). Native resources only support known attributes (description, color, pagerduty_id, etc.) — see [Native Resources](docs/examples/native/) for the full list per type.
+When `type` is omitted or `"catalog"`, entities sync to custom catalogs (existing behavior). Native resources support built-in attributes (description, color, pagerduty_id, etc.) plus custom catalog properties — see [Native Resources](docs/examples/native/) for details, including reference fields backed by separate YAML files.
 
 ### Environment variables
 
