@@ -260,11 +260,12 @@ func ctyToGo(v cty.Value) any {
 const (
 	KindReference = "reference"
 	KindText      = "text"
+	KindService   = "service"
 )
 
 var validFieldKinds = map[string]bool{
 	KindText: true, "number": true, "boolean": true, KindReference: true,
-	"service": true, "group": true, "functionality": true, "environment": true,
+	KindService: true, "group": true, "functionality": true, "environment": true,
 	"incident_type": true, "cause": true, "user": true,
 	"slack_channel": true, "slack_alias": true,
 }
