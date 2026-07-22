@@ -149,3 +149,10 @@ func (f FieldValue) MarshalYAML() (any, error) {
 		Catalog string `yaml:"catalog,omitempty"`
 	}{f.Value, f.Kind, f.Catalog}, nil
 }
+
+func Marshal(cfg *Config) ([]byte, error) {
+	if cfg.Version == 2 {
+		return marshalV2(cfg)
+	}
+	return yaml.Marshal(cfg)
+}

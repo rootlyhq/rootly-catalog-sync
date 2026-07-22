@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/rootlyhq/rootly-catalog-sync/client"
+	"gopkg.in/yaml.v3"
 )
 
 type configV2 struct {
@@ -110,4 +111,73 @@ func deriveSyncID(syncs []syncV2) string {
 		return syncs[0].To
 	}
 	return "sync"
+}
+
+func marshalV2(cfg *Config) ([]byte, error) {
+	raw := configV2YAML{Version: 2}
+
+	for _, p := range cfg.Pipelines {
+		if len(p.Sources) == 0 || len(p.Outputs) == 0 {
+			continue
+		}
+		out := p.Outputs[0]
+
+		target := out.Catalog
+		if out.Type != "" {
+			target = out.Type
+		}
+
+		m := make(map[string]mapEntryV2YAML)
+		m["external_id"] = mapEntryV2YAML{scalar: out.ExternalID}
+		m["name"] = mapEntryV2YAML{scalar: out.Name}
+		if out.BackstageID != "" {
+			m["backstage_id"] = mapEntryV2YAML{scalar: out.BackstageID}
+		}
+		for slug, fv := range out.Fields {
+			if fv.Kind == "reference" {
+				m[slug] = mapEntryV2YAML{Value: fv.Value, Reference: fv.Catalog}
+			} else if fv.Kind != "" && fv.Kind != "text" {
+				m[slug] = mapEntryV2YAML{Value: fv.Value, Kind: fv.Kind}
+			} else {
+				m[slug] = mapEntryV2YAML{scalar: fv.Value}
+			}
+		}
+
+		raw.Sync = append(raw.Sync, syncV2YAML{
+			From: p.Sources[0],
+			To:   target,
+			Map:  m,
+		})
+	}
+
+	return yaml.Marshal(raw)
+}
+
+type configV2YAML struct {
+	Version int          `yaml:"version"`
+	Sync    []syncV2YAML `yaml:"sync"`
+}
+
+type syncV2YAML struct {
+	From SourceConfig             `yaml:"from"`
+	To   string                   `yaml:"to"`
+	Map  map[string]mapEntryV2YAML `yaml:"map"`
+}
+
+type mapEntryV2YAML struct {
+	scalar    string
+	Value     string `yaml:"value,omitempty"`
+	Reference string `yaml:"reference,omitempty"`
+	Kind      string `yaml:"kind,omitempty"`
+}
+
+func (m mapEntryV2YAML) MarshalYAML() (any, error) {
+	if m.scalar != "" {
+		return m.scalar, nil
+	}
+	return struct {
+		Value     string `yaml:"value"`
+		Reference string `yaml:"reference,omitempty"`
+		Kind      string `yaml:"kind,omitempty"`
+	}{m.Value, m.Reference, m.Kind}, nil
 }

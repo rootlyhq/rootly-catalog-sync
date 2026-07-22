@@ -117,7 +117,7 @@ pipelines:
 
 Field mappings use Go templates. Built-in helpers: `{{ get .metadata "team" }}` for nested access, `{{ default .tier "unknown" }}` for fallbacks.
 
-> **Note:** The `init` command currently generates v1 format. You can convert it to v2 manually using the format shown above.
+> **Tip:** Run `rootly-catalog-sync init --demo` to scaffold a complete working example with sample data files you can `plan` immediately.
 
 Config files are detected by extension: `.yaml`/`.yml` (default), `.jsonnet`, or `.hcl`. All three formats support both v1 and v2 schemas.
 

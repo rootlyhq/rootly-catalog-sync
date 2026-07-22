@@ -643,10 +643,10 @@ func (m WizardModel) generateSourceYAML() string {
 	var b strings.Builder
 	switch m.sourceType {
 	case "inline":
-		b.WriteString("      - inline:\n")
-		b.WriteString("          entries:\n")
-		b.WriteString("            - id: example\n")
-		b.WriteString("              name: Example\n")
+		b.WriteString("      inline:\n")
+		b.WriteString("        entries:\n")
+		b.WriteString("          - id: example\n")
+		b.WriteString("            name: Example\n")
 	case "local":
 		b.WriteString("      local:\n")
 		_, _ = fmt.Fprintf(&b, "        files: [%q]\n", m.sourceFiles)

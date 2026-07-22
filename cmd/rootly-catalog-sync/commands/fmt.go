@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/spf13/cobra"
 
 	"github.com/rootlyhq/rootly-catalog-sync/config"
@@ -23,7 +21,7 @@ func runFmt(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	data, err := yaml.Marshal(cfg)
+	data, err := config.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
