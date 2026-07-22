@@ -250,7 +250,7 @@ func ensureOutputFields(ctx context.Context, cl *client.Client, catalogID string
 	for slug, fv := range out.Fields {
 		kind := fv.EffectiveKind()
 		spec := client.FieldSpec{Name: slug, Kind: kind}
-		if kind == "reference" && fv.Catalog != "" {
+		if kind == config.KindReference && fv.Catalog != "" {
 			catalogs, err := cl.ListCatalogs(ctx)
 			if err != nil {
 				return fmt.Errorf("listing catalogs for field %q: %w", slug, err)
@@ -302,7 +302,7 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 				return nil, fmt.Errorf("property %q on %s has kind %q but config declares kind %q",
 					slug, out.Type, existing.Kind, kind)
 			}
-			if kind == "reference" && fv.Catalog != "" && existing.KindCatalogID != "" {
+			if kind == config.KindReference && fv.Catalog != "" && existing.KindCatalogID != "" {
 				catalogs, err := cl.ListCatalogs(ctx)
 				if err != nil {
 					return nil, fmt.Errorf("listing catalogs for property %q validation: %w", slug, err)
@@ -346,7 +346,7 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 func resolveReferenceFields(ctx context.Context, cl *client.Client, out config.Output, desired []catalog.DesiredEntity) error {
 	refCatalogs := make(map[string]string)
 	for slug, fv := range out.Fields {
-		if fv.Kind == "reference" && fv.Catalog != "" {
+		if fv.Kind == config.KindReference && fv.Catalog != "" {
 			refCatalogs[slug] = fv.Catalog
 		}
 	}

@@ -597,8 +597,6 @@ func TestImport_ResolvesReferenceFields(t *testing.T) {
 	cl := client.New("test", client.WithBaseURL(srv.URL), client.WithMaxRetries(0))
 
 	cfg := &config.Config{
-		Version: 1,
-		SyncID:  "import-ref-test",
 		Pipelines: []config.Pipeline{{
 			Sources: []config.SourceConfig{{
 				Inline: &config.InlineSourceConfig{Entries: []map[string]any{

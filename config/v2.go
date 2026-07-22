@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/rootlyhq/rootly-catalog-sync/client"
 	"gopkg.in/yaml.v3"
+
+	"github.com/rootlyhq/rootly-catalog-sync/client"
 )
 
 type configV2 struct {
@@ -14,8 +15,8 @@ type configV2 struct {
 }
 
 type syncV2 struct {
-	From sourceConfigV2       `json:"from"`
-	To   string               `json:"to"`
+	From sourceConfigV2        `json:"from"`
+	To   string                `json:"to"`
 	Map  map[string]mapEntryV2 `json:"map"`
 }
 
@@ -89,7 +90,7 @@ func loadV2(data []byte) (*Config, error) {
 			}
 			fv := FieldValue{Value: entry.Value}
 			if entry.Reference != "" {
-				fv.Kind = "reference"
+				fv.Kind = KindReference
 				fv.Catalog = entry.Reference
 			} else if entry.Kind != "" {
 				fv.Kind = entry.Kind
@@ -134,9 +135,9 @@ func marshalV2(cfg *Config) ([]byte, error) {
 			m["backstage_id"] = mapEntryV2YAML{scalar: out.BackstageID}
 		}
 		for slug, fv := range out.Fields {
-			if fv.Kind == "reference" {
+			if fv.Kind == KindReference {
 				m[slug] = mapEntryV2YAML{Value: fv.Value, Reference: fv.Catalog}
-			} else if fv.Kind != "" && fv.Kind != "text" {
+			} else if fv.Kind != "" && fv.Kind != KindText {
 				m[slug] = mapEntryV2YAML{Value: fv.Value, Kind: fv.Kind}
 			} else {
 				m[slug] = mapEntryV2YAML{scalar: fv.Value}
@@ -159,8 +160,8 @@ type configV2YAML struct {
 }
 
 type syncV2YAML struct {
-	From SourceConfig             `yaml:"from"`
-	To   string                   `yaml:"to"`
+	From SourceConfig              `yaml:"from"`
+	To   string                    `yaml:"to"`
 	Map  map[string]mapEntryV2YAML `yaml:"map"`
 }
 

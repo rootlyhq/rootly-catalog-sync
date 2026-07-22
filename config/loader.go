@@ -257,8 +257,13 @@ func ctyToGo(v cty.Value) any {
 	}
 }
 
+const (
+	KindReference = "reference"
+	KindText      = "text"
+)
+
 var validFieldKinds = map[string]bool{
-	"text": true, "number": true, "boolean": true, "reference": true,
+	KindText: true, "number": true, "boolean": true, KindReference: true,
 	"service": true, "group": true, "functionality": true, "environment": true,
 	"incident_type": true, "cause": true, "user": true,
 	"slack_channel": true, "slack_alias": true,
@@ -303,7 +308,7 @@ func Validate(cfg *Config) error {
 				if fv.Kind != "" && !validFieldKind(fv.Kind) {
 					return fmt.Errorf("pipeline[%d].outputs[%d].fields[%s]: unsupported kind %q (valid: text, number, boolean, reference, service, group, functionality, environment, incident_type, cause, user, slack_channel, slack_alias)", i, j, slug, fv.Kind)
 				}
-				if fv.Kind == "reference" && fv.Catalog == "" {
+				if fv.Kind == KindReference && fv.Catalog == "" {
 					return fmt.Errorf("pipeline[%d].outputs[%d].fields[%s]: catalog is required when kind is reference", i, j, slug)
 				}
 			}
