@@ -27,7 +27,13 @@ brew install rootlyhq/tap/rootly-catalog-sync
 go install github.com/rootlyhq/rootly-catalog-sync/cmd/rootly-catalog-sync@latest
 
 # Docker
-docker run --rm -e ROOTLY_API_KEY rootlyhq/rootly-catalog-sync sync --config=/config.yaml
+docker run --rm -e ROOTLY_API_KEY rootlyhub/rootly-catalog-sync sync --config=/config.yaml
+
+# Helm (Kubernetes)
+helm repo add rootly https://rootlyhq.github.io/helm-charts
+helm install catalog-sync rootly/rootly-catalog-sync \
+  --set rootly.apiKey=rootly_... \
+  --set-string configYaml="$(cat rootly-catalog-sync.yaml)"
 ```
 
 ## Quick Start
@@ -376,7 +382,7 @@ jobs:
 docker run --rm \
   -e ROOTLY_API_KEY \
   -v $(pwd):/work \
-  rootlyhq/rootly-catalog-sync \
+  rootlyhub/rootly-catalog-sync \
   sync --config=/work/rootly-catalog-sync.yaml
 ```
 
@@ -388,9 +394,20 @@ steps:
       docker run --rm \
         -e ROOTLY_API_KEY \
         -v ${{ github.workspace }}:/work \
-        rootlyhq/rootly-catalog-sync \
+        rootlyhub/rootly-catalog-sync \
         sync --config=/work/rootly-catalog-sync.yaml
 ```
+
+### Kubernetes (Helm)
+
+```bash
+helm repo add rootly https://rootlyhq.github.io/helm-charts
+helm install catalog-sync rootly/rootly-catalog-sync \
+  --set rootly.apiKey=$ROOTLY_API_KEY \
+  --set-string configYaml="$(cat rootly-catalog-sync.yaml)"
+```
+
+Supports CronJob (default, every 30 min) or watch mode (`--set mode=watch`). See the [Helm chart](https://github.com/rootlyhq/helm-charts/tree/master/charts/rootly-catalog-sync) for all options.
 
 ### CircleCI
 
