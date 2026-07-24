@@ -332,16 +332,32 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 			return nil, fmt.Errorf("property %q (kind: %s) not found on %s — must be created in the Rootly UI first\n  Available properties: %v",
 				slug, kind, out.Type, available)
 		}
-		if kind == config.KindReference {
-			return nil, fmt.Errorf("property %q (kind: reference) not found on %s — reference properties must be created in the Rootly UI first", slug, out.Type)
-		}
 		if !canMutate {
 			return nil, fmt.Errorf("property %q does not exist on %s — run sync to auto-create it", slug, out.Type)
 		}
-		if err := cl.EnsureNativeProperty(ctx, out.Type, slug, kind, ""); err != nil {
+		var kindCatalogID string
+		if kind == config.KindReference {
+			if fv.Catalog == "" {
+				return nil, fmt.Errorf("property %q (kind: reference) requires a catalog name in config", slug)
+			}
+			catalogs, err := cl.ListCatalogs(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("listing catalogs for property %q: %w", slug, err)
+			}
+			for _, c := range catalogs {
+				if c.Name == fv.Catalog {
+					kindCatalogID = c.ID
+					break
+				}
+			}
+			if kindCatalogID == "" {
+				return nil, fmt.Errorf("property %q references catalog %q which does not exist — sync it first", slug, fv.Catalog)
+			}
+		}
+		if err := cl.EnsureNativeProperty(ctx, out.Type, slug, kind, kindCatalogID); err != nil {
 			return nil, fmt.Errorf("auto-creating %s property %q: %w", kind, slug, err)
 		}
-		props = append(props, client.NativePropertyInfo{Slug: slug, Kind: kind})
+		props = append(props, client.NativePropertyInfo{Slug: slug, Kind: kind, KindCatalogID: kindCatalogID})
 	}
 	return props, nil
 }

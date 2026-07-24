@@ -192,7 +192,7 @@ func TestEnsureNativeOutputFields_AutoCreateText(t *testing.T) {
 	}
 }
 
-func TestEnsureNativeOutputFields_RejectsNonTextMissing(t *testing.T) {
+func TestEnsureNativeOutputFields_RejectsNonSDKKind(t *testing.T) {
 	srv := testServer(t, []map[string]any{}, nil)
 	defer srv.Close()
 
@@ -200,16 +200,139 @@ func TestEnsureNativeOutputFields_RejectsNonTextMissing(t *testing.T) {
 	out := config.Output{
 		Type: "service",
 		Fields: map[string]config.FieldValue{
-			"my-ref": {Value: "{{ .ref }}", Kind: "reference", Catalog: "Things"},
+			"channel": {Value: "{{ .ch }}", Kind: "slack_channel"},
 		},
 	}
 
 	_, err := ensureNativeOutputFields(context.Background(), cl, out, true)
 	if err == nil {
-		t.Fatal("expected error for missing non-text property")
+		t.Fatal("expected error for non-SDK-creatable kind")
 	}
 	if !strings.Contains(err.Error(), "must be created in the Rootly UI") {
 		t.Errorf("expected UI creation hint, got: %s", err)
+	}
+}
+
+func TestEnsureNativeOutputFields_AutoCreateReference(t *testing.T) {
+	var createdKind, createdCatalogID string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/services/properties", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			attrs := body["data"].(map[string]any)["attributes"].(map[string]any)
+			createdKind = attrs["kind"].(string)
+			if cid, ok := attrs["kind_catalog_id"]; ok {
+				createdCatalogID = cid.(string)
+			}
+			jsonAPIStatus(w, 201, map[string]any{
+				"data": map[string]any{"id": "new-ref-prop", "type": "catalog_properties", "attributes": map[string]any{}},
+			})
+			return
+		}
+		jsonAPI(w, emptyList())
+	})
+	mux.HandleFunc("/v1/catalogs", func(w http.ResponseWriter, r *http.Request) {
+		jsonAPI(w, map[string]any{
+			"data": []map[string]any{
+				{"id": "cat-tiers", "type": "catalogs", "attributes": map[string]any{"name": "Tiers"}},
+			},
+			"links": map[string]any{"self": ""},
+			"meta":  map[string]any{"total_pages": 1, "current_page": 1, "total_count": 1},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cl := client.New("test", client.WithBaseURL(srv.URL), client.WithMaxRetries(0))
+	out := config.Output{
+		Type: "service",
+		Fields: map[string]config.FieldValue{
+			"service-tier": {Value: "{{ .tier }}", Kind: "reference", Catalog: "Tiers"},
+		},
+	}
+
+	props, err := ensureNativeOutputFields(context.Background(), cl, out, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createdKind != "reference" {
+		t.Errorf("expected kind=reference, got %s", createdKind)
+	}
+	if createdCatalogID != "cat-tiers" {
+		t.Errorf("expected kind_catalog_id=cat-tiers, got %s", createdCatalogID)
+	}
+	found := false
+	for _, p := range props {
+		if p.Slug == "service-tier" && p.Kind == "reference" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected service-tier in returned props")
+	}
+}
+
+func TestEnsureNativeOutputFields_ReferenceMissingCatalog(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/services/properties", func(w http.ResponseWriter, r *http.Request) {
+		jsonAPI(w, emptyList())
+	})
+	mux.HandleFunc("/v1/catalogs", func(w http.ResponseWriter, r *http.Request) {
+		jsonAPI(w, emptyList())
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cl := client.New("test", client.WithBaseURL(srv.URL), client.WithMaxRetries(0))
+	out := config.Output{
+		Type: "service",
+		Fields: map[string]config.FieldValue{
+			"tier": {Value: "{{ .tier }}", Kind: "reference", Catalog: "Nonexistent"},
+		},
+	}
+
+	_, err := ensureNativeOutputFields(context.Background(), cl, out, true)
+	if err == nil {
+		t.Fatal("expected error for missing catalog")
+	}
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("expected 'does not exist' error, got: %s", err)
+	}
+}
+
+func TestEnsureNativeOutputFields_AutoCreateBoolean(t *testing.T) {
+	var createdKind string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/services/properties", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			createdKind = body["data"].(map[string]any)["attributes"].(map[string]any)["kind"].(string)
+			jsonAPIStatus(w, 201, map[string]any{
+				"data": map[string]any{"id": "new-bool", "type": "catalog_properties", "attributes": map[string]any{}},
+			})
+			return
+		}
+		jsonAPI(w, emptyList())
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cl := client.New("test", client.WithBaseURL(srv.URL), client.WithMaxRetries(0))
+	out := config.Output{
+		Type: "service",
+		Fields: map[string]config.FieldValue{
+			"is-critical": {Value: "{{ .critical }}", Kind: "boolean"},
+		},
+	}
+
+	_, err := ensureNativeOutputFields(context.Background(), cl, out, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createdKind != "boolean" {
+		t.Errorf("expected kind=boolean created, got %s", createdKind)
 	}
 }
 
