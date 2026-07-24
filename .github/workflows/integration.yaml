@@ -11,6 +11,8 @@ jobs:
     name: Integration
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    env:
+      RUN_ID: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -23,32 +25,35 @@ jobs:
           ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
         run: |
           set -euo pipefail
+          stamp() { sed -i "s/__RUN__/$RUN_ID/g" "$1"; }
 
           # Setup
           mkdir -p catalog
           cat > rootly-catalog-sync.yaml <<'EOF'
           version: 1
-          sync_id: ci-integration-test
+          sync_id: ci-integration-test-__RUN__
           pipelines:
             - sources:
                 - local:
                     files: ["catalog/*.yaml"]
               outputs:
-                - catalog: "CI Integration Test"
+                - catalog: "CI Integration Test __RUN__"
                   external_id: "{{ .id }}"
                   name: "{{ .name }}"
                   fields:
                     tier: "{{ .tier }}"
           EOF
+          stamp rootly-catalog-sync.yaml
 
           cat > catalog/services.yaml <<'EOF'
-          - id: ci-svc-1
-            name: CI Test Service A
+          - id: ci-svc-1-__RUN__
+            name: CI Test Service A __RUN__
             tier: "1"
-          - id: ci-svc-2
-            name: CI Test Service B
+          - id: ci-svc-2-__RUN__
+            name: CI Test Service B __RUN__
             tier: "2"
           EOF
+          stamp catalog/services.yaml
 
           # Doctor
           ./rootly-catalog-sync doctor
@@ -80,22 +85,24 @@ jobs:
 
           # Update
           cat > catalog/services.yaml <<'EOF'
-          - id: ci-svc-1
-            name: CI Test Service A Updated
+          - id: ci-svc-1-__RUN__
+            name: CI Test Service A Updated __RUN__
             tier: "0"
-          - id: ci-svc-2
-            name: CI Test Service B
+          - id: ci-svc-2-__RUN__
+            name: CI Test Service B __RUN__
             tier: "2"
           EOF
+          stamp catalog/services.yaml
           ./rootly-catalog-sync sync
           echo "✓ sync (update)"
 
           # Prune
           cat > catalog/services.yaml <<'EOF'
-          - id: ci-svc-1
-            name: CI Test Service A Updated
+          - id: ci-svc-1-__RUN__
+            name: CI Test Service A Updated __RUN__
             tier: "0"
           EOF
+          stamp catalog/services.yaml
           ./rootly-catalog-sync sync --allow-prune --prune-threshold=1.0
           echo "✓ sync (prune)"
 
@@ -107,21 +114,23 @@ jobs:
           ./rootly-catalog-sync sync --allow-prune 2>&1 | grep -q "empty source" && echo "✓ empty source safety"
 
           # Explain
-          ./rootly-catalog-sync explain ci-svc-1 | grep -q "noop" && echo "✓ explain"
+          ./rootly-catalog-sync explain ci-svc-1-$RUN_ID | grep -q "noop" && echo "✓ explain"
 
           # Plan freshness — create plan, change source, apply should detect stale
           cat > catalog/services.yaml <<'EOF'
-          - id: ci-svc-1
-            name: CI Test Service A Updated
+          - id: ci-svc-1-__RUN__
+            name: CI Test Service A Updated __RUN__
             tier: "0"
           EOF
+          stamp catalog/services.yaml
           ./rootly-catalog-sync plan
           # Change source behind plan's back
           cat > catalog/services.yaml <<'EOF'
-          - id: ci-svc-1
-            name: CI Test Service A Changed Again
+          - id: ci-svc-1-__RUN__
+            name: CI Test Service A Changed Again __RUN__
             tier: "0"
           EOF
+          stamp catalog/services.yaml
           ./rootly-catalog-sync sync
           # Now try to apply the OLD plan — should warn about staleness
           ./rootly-catalog-sync apply .rootly-catalog-sync-plan-*.json 2>&1 | grep -q "stale\|Nothing to do" && echo "✓ plan freshness"
@@ -134,26 +143,28 @@ jobs:
           ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
         run: |
           set -euo pipefail
+          stamp() { sed -i "s/__RUN__/$RUN_ID/g" "$1"; }
+
           cat > rootly-catalog-sync.yaml <<'EOF'
-          version: 1
-          sync_id: ci-native-svc
-          pipelines:
-            - sources:
-                - inline:
-                    entries:
-                      - id: ci-native-svc-1
-                        name: CI Native Service A
-                        description: Integration test service
-                      - id: ci-native-svc-2
-                        name: CI Native Service B
-                        description: Second test service
-              outputs:
-                - type: service
-                  external_id: "{{ .id }}"
-                  name: "{{ .name }}"
-                  fields:
-                    description: "{{ .description }}"
+          version: 2
+          sync:
+            - from:
+                inline:
+                  entries:
+                    - id: ci-native-svc-1-__RUN__
+                      name: CI Native Service A __RUN__
+                      description: Integration test service
+                    - id: ci-native-svc-2-__RUN__
+                      name: CI Native Service B __RUN__
+                      description: Second test service
+              to: service
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+                description: "{{ .description }}"
           EOF
+          stamp rootly-catalog-sync.yaml
+
           ./rootly-catalog-sync sync
           echo "✓ native service create"
           ./rootly-catalog-sync status --fail-on-drift && echo "✓ native service in sync"
@@ -166,51 +177,51 @@ jobs:
 
           # Update
           cat > rootly-catalog-sync.yaml <<'EOF'
-          version: 1
-          sync_id: ci-native-svc
-          pipelines:
-            - sources:
-                - inline:
-                    entries:
-                      - id: ci-native-svc-1
-                        name: CI Native Service A Updated
-                        description: Updated description
-                      - id: ci-native-svc-2
-                        name: CI Native Service B
-                        description: Second test service
-              outputs:
-                - type: service
-                  external_id: "{{ .id }}"
-                  name: "{{ .name }}"
-                  fields:
-                    description: "{{ .description }}"
+          version: 2
+          sync:
+            - from:
+                inline:
+                  entries:
+                    - id: ci-native-svc-1-__RUN__
+                      name: CI Native Service A Updated __RUN__
+                      description: Updated description
+                    - id: ci-native-svc-2-__RUN__
+                      name: CI Native Service B __RUN__
+                      description: Second test service
+              to: service
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+                description: "{{ .description }}"
           EOF
+          stamp rootly-catalog-sync.yaml
+
           ./rootly-catalog-sync sync
           echo "✓ native service update"
 
           # Prune
           cat > rootly-catalog-sync.yaml <<'EOF'
-          version: 1
-          sync_id: ci-native-svc
-          pipelines:
-            - sources:
-                - inline:
-                    entries:
-                      - id: ci-native-svc-1
-                        name: CI Native Service A Updated
-                        description: Updated description
-              outputs:
-                - type: service
-                  external_id: "{{ .id }}"
-                  name: "{{ .name }}"
-                  fields:
-                    description: "{{ .description }}"
+          version: 2
+          sync:
+            - from:
+                inline:
+                  entries:
+                    - id: ci-native-svc-1-__RUN__
+                      name: CI Native Service A Updated __RUN__
+                      description: Updated description
+              to: service
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+                description: "{{ .description }}"
           EOF
+          stamp rootly-catalog-sync.yaml
+
           ./rootly-catalog-sync sync --allow-prune --prune-threshold=1.0
           echo "✓ native service prune"
 
           # Explain
-          ./rootly-catalog-sync explain ci-native-svc-1 | grep -q "noop" && echo "✓ native service explain"
+          ./rootly-catalog-sync explain ci-native-svc-1-$RUN_ID | grep -q "noop" && echo "✓ native service explain"
 
           echo "=== native services passed ==="
 
@@ -219,26 +230,28 @@ jobs:
           ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
         run: |
           set -euo pipefail
+          stamp() { sed -i "s/__RUN__/$RUN_ID/g" "$1"; }
+
           cat > rootly-catalog-sync.yaml <<'EOF'
-          version: 1
-          sync_id: ci-native-func
-          pipelines:
-            - sources:
-                - inline:
-                    entries:
-                      - id: ci-native-func-1
-                        name: CI Checkout Flow
-                        description: Integration test functionality
-                      - id: ci-native-func-2
-                        name: CI User Auth
-                        description: Second test functionality
-              outputs:
-                - type: functionality
-                  external_id: "{{ .id }}"
-                  name: "{{ .name }}"
-                  fields:
-                    description: "{{ .description }}"
+          version: 2
+          sync:
+            - from:
+                inline:
+                  entries:
+                    - id: ci-native-func-1-__RUN__
+                      name: CI Checkout Flow __RUN__
+                      description: Integration test functionality
+                    - id: ci-native-func-2-__RUN__
+                      name: CI User Auth __RUN__
+                      description: Second test functionality
+              to: functionality
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+                description: "{{ .description }}"
           EOF
+          stamp rootly-catalog-sync.yaml
+
           ./rootly-catalog-sync sync
           echo "✓ native functionality create"
           ./rootly-catalog-sync status --fail-on-drift && echo "✓ native functionality in sync"
@@ -251,26 +264,28 @@ jobs:
           ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
         run: |
           set -euo pipefail
+          stamp() { sed -i "s/__RUN__/$RUN_ID/g" "$1"; }
+
           cat > rootly-catalog-sync.yaml <<'EOF'
-          version: 1
-          sync_id: ci-native-env
-          pipelines:
-            - sources:
-                - inline:
-                    entries:
-                      - id: ci-native-env-1
-                        name: CI Staging
-                        description: Integration test environment
-                      - id: ci-native-env-2
-                        name: CI Production
-                        description: Second test environment
-              outputs:
-                - type: environment
-                  external_id: "{{ .id }}"
-                  name: "{{ .name }}"
-                  fields:
-                    description: "{{ .description }}"
+          version: 2
+          sync:
+            - from:
+                inline:
+                  entries:
+                    - id: ci-native-env-1-__RUN__
+                      name: CI Staging __RUN__
+                      description: Integration test environment
+                    - id: ci-native-env-2-__RUN__
+                      name: CI Production __RUN__
+                      description: Second test environment
+              to: environment
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+                description: "{{ .description }}"
           EOF
+          stamp rootly-catalog-sync.yaml
+
           ./rootly-catalog-sync sync
           echo "✓ native environment create"
           ./rootly-catalog-sync status --fail-on-drift && echo "✓ native environment in sync"
@@ -279,16 +294,15 @@ jobs:
 
           # Sentinel guard — empty source should refuse to delete all
           cat > rootly-catalog-sync.yaml <<'EOF'
-          version: 1
-          sync_id: ci-native-env-sentinel
-          pipelines:
-            - sources:
-                - inline:
-                    entries: []
-              outputs:
-                - type: environment
-                  external_id: "{{ .id }}"
-                  name: "{{ .name }}"
+          version: 2
+          sync:
+            - from:
+                inline:
+                  entries: []
+              to: environment
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
           EOF
           ./rootly-catalog-sync sync --allow-prune 2>&1 | grep -q "at least\|empty source" && echo "✓ environment sentinel guard"
 
@@ -299,26 +313,28 @@ jobs:
           ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
         run: |
           set -euo pipefail
+          stamp() { sed -i "s/__RUN__/$RUN_ID/g" "$1"; }
+
           cat > rootly-catalog-sync.yaml <<'EOF'
-          version: 1
-          sync_id: ci-native-team
-          pipelines:
-            - sources:
-                - inline:
-                    entries:
-                      - id: ci-native-team-1
-                        name: CI Platform Team
-                        description: Integration test team
-                      - id: ci-native-team-2
-                        name: CI Security Team
-                        description: Second test team
-              outputs:
-                - type: team
-                  external_id: "{{ .id }}"
-                  name: "{{ .name }}"
-                  fields:
-                    description: "{{ .description }}"
+          version: 2
+          sync:
+            - from:
+                inline:
+                  entries:
+                    - id: ci-native-team-1-__RUN__
+                      name: CI Platform Team __RUN__
+                      description: Integration test team
+                    - id: ci-native-team-2-__RUN__
+                      name: CI Security Team __RUN__
+                      description: Second test team
+              to: team
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+                description: "{{ .description }}"
           EOF
+          stamp rootly-catalog-sync.yaml
+
           ./rootly-catalog-sync sync
           echo "✓ native team create"
           ./rootly-catalog-sync status --fail-on-drift && echo "✓ native team in sync"
