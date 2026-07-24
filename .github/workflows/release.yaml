@@ -28,3 +28,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.GORELEASER_PAT }}
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Extract version from tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Build and push
+        run: |
+          docker build --build-arg VERSION=${{ env.VERSION }} -t rootlyhub/rootly-catalog-sync:${{ env.VERSION }} .
+          docker tag rootlyhub/rootly-catalog-sync:${{ env.VERSION }} rootlyhub/rootly-catalog-sync:latest
+          docker push rootlyhub/rootly-catalog-sync:${{ env.VERSION }}
+          docker push rootlyhub/rootly-catalog-sync:latest
