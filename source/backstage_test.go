@@ -94,13 +94,13 @@ func TestBackstageSource_Load(t *testing.T) {
 	if e["owner"] != "team-platform" {
 		t.Errorf("expected owner=team-platform, got %v", e["owner"])
 	}
-	if e["backstage_id"] != "Component:default/service-a" {
-		t.Errorf("expected backstage_id=Component:default/service-a, got %v", e["backstage_id"])
+	if e["backstage_id"] != "component:default/service-a" {
+		t.Errorf("expected backstage_id=component:default/service-a, got %v", e["backstage_id"])
 	}
 
 	e2 := entries[1]
-	if e2["backstage_id"] != "Component:default/service-b" {
-		t.Errorf("expected backstage_id=Component:default/service-b, got %v", e2["backstage_id"])
+	if e2["backstage_id"] != "component:default/service-b" {
+		t.Errorf("expected backstage_id=component:default/service-b, got %v", e2["backstage_id"])
 	}
 
 	annotations, ok := e["annotations"].(map[string]string)

@@ -133,7 +133,10 @@ func flattenEntity(raw json.RawMessage) (Entry, error) {
 	if namespace == "" {
 		namespace = "default"
 	}
-	backstageID := fmt.Sprintf("%s:%s/%s", entity.Kind, namespace, entity.Metadata.Name)
+	backstageID := fmt.Sprintf("%s:%s/%s",
+		strings.ToLower(entity.Kind),
+		strings.ToLower(namespace),
+		strings.ToLower(entity.Metadata.Name))
 
 	entry := Entry{
 		"kind":         entity.Kind,
