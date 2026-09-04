@@ -6,17 +6,24 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+
+	"github.com/Masterminds/sprig/v3"
 )
 
-var funcMap = template.FuncMap{
-	"get": func(m map[string]any, key string) (any, error) {
+var funcMap = buildFuncMap()
+
+func buildFuncMap() template.FuncMap {
+	fm := sprig.TxtFuncMap()
+
+	fm["get"] = func(m map[string]any, key string) (any, error) {
 		v, ok := m[key]
 		if !ok {
 			return nil, fmt.Errorf("key %q not found in map", key)
 		}
 		return v, nil
-	},
-	"default": func(val any, fallback string) string {
+	}
+
+	fm["default"] = func(val any, fallback string) string {
 		if val == nil {
 			return fallback
 		}
@@ -25,7 +32,9 @@ var funcMap = template.FuncMap{
 			return fallback
 		}
 		return s
-	},
+	}
+
+	return fm
 }
 
 var templateCache sync.Map // map[string]*template.Template

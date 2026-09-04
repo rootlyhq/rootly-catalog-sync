@@ -98,3 +98,44 @@ func TestEvalIntegerAndBoolValues(t *testing.T) {
 		t.Fatalf("expected %q, got %q", "true", result)
 	}
 }
+
+func TestEvalSprigLower(t *testing.T) {
+	result, err := Eval("{{ .name | lower }}", map[string]any{"name": "Security-TEST"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "security-test" {
+		t.Fatalf("expected %q, got %q", "security-test", result)
+	}
+}
+
+// Regression: adding Sprig must NOT change the repo's `default` semantics.
+// The repo's default is `default VALUE FALLBACK` (value first); Sprig's is
+// reversed (`default FALLBACK VALUE`). Guard the original arg order.
+func TestEvalDefaultKeepsRepoArgOrder(t *testing.T) {
+	result, err := Eval(`{{ default .tier "unknown" }}`, map[string]any{"tier": "gold"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "gold" {
+		// Sprig's reversed default would always return the literal "unknown" here.
+		t.Fatalf("expected %q (repo arg order), got %q", "gold", result)
+	}
+
+	result, err = Eval(`{{ default .tier "unknown" }}`, map[string]any{"tier": ""})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "unknown" {
+		t.Fatalf("expected %q, got %q", "unknown", result)
+	}
+}
+
+// Regression: the repo's strict `get` must still error on a missing key
+// (Sprig's get would return an empty string instead).
+func TestEvalGetKeepsStrictBehavior(t *testing.T) {
+	_, err := Eval(`{{ get .meta "missing" }}`, map[string]any{"meta": map[string]any{"team": "platform"}})
+	if err == nil {
+		t.Fatal("expected error for missing key via strict get, got nil")
+	}
+}
