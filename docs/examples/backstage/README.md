@@ -2,6 +2,30 @@
 
 This example syncs services from a [Backstage](https://backstage.io/) catalog into Rootly.
 
+## Upgrading to v0.4.0
+
+The generated `backstage_id` now uses Backstage's canonical lowercase reference:
+`Component:Production/Payments-API` becomes `component:production/payments-api`.
+The separate `kind`, `namespace`, and `name` source fields retain their original case.
+
+If your configuration uses `external_id: "{{ .backstage_id }}"`, this changes the
+identity used for matching existing Rootly entities. A sync can create replacements,
+and `--allow-prune` can delete the old entities. Run `plan` and inspect the changes
+before syncing after the upgrade.
+
+To preserve the previous external IDs while using the corrected `backstage_id`
+attribute, reconstruct the old reference from the unchanged source fields:
+
+```yaml
+map:
+  external_id: '{{ printf "%s:%s/%s" .kind .namespace .name }}'
+  name: "{{ .name }}"
+  backstage_id: "{{ .backstage_id }}"
+```
+
+Configurations with external IDs independent of `backstage_id` keep their existing
+identities and receive only an attribute update where `backstage_id` is mapped.
+
 ## File structure
 
 ```
