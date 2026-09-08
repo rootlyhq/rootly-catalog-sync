@@ -131,6 +131,41 @@ func TestBackstageSource_Load(t *testing.T) {
 	}
 }
 
+func TestFlattenEntityCanonicalBackstageID(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		raw       string
+		wantID    string
+		namespace string
+	}{
+		{
+			name:      "mixed case",
+			raw:       `{"kind":"Component","metadata":{"name":"Payments-API","namespace":"Production"}}`,
+			wantID:    "component:production/payments-api",
+			namespace: "Production",
+		},
+		{
+			name:      "default namespace",
+			raw:       `{"kind":"Component","metadata":{"name":"Payments-API"}}`,
+			wantID:    "component:default/payments-api",
+			namespace: "default",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entry, err := flattenEntity(json.RawMessage(tc.raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if entry["backstage_id"] != tc.wantID {
+				t.Errorf("backstage_id = %v, want %s", entry["backstage_id"], tc.wantID)
+			}
+			if entry["kind"] != "Component" || entry["name"] != "Payments-API" || entry["namespace"] != tc.namespace {
+				t.Errorf("source fields should preserve their original case: %v", entry)
+			}
+		})
+	}
+}
+
 func TestBackstageSource_WithFilter(t *testing.T) {
 	var receivedFilter string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
