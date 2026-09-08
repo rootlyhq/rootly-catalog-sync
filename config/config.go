@@ -65,10 +65,11 @@ type ExecSourceConfig struct {
 }
 
 type BackstageSourceConfig struct {
-	URL    string `yaml:"url" json:"url" hcl:"url"`
-	Token  string `yaml:"token,omitempty" json:"token,omitempty" hcl:"token,optional"`
-	Filter string `yaml:"filter,omitempty" json:"filter,omitempty" hcl:"filter,optional"`
-	Kind   string `yaml:"kind,omitempty" json:"kind,omitempty" hcl:"kind,optional"`
+	URL     string   `yaml:"url" json:"url" hcl:"url"`
+	Token   string   `yaml:"token,omitempty" json:"token,omitempty" hcl:"token,optional"`
+	Filter  string   `yaml:"filter,omitempty" json:"filter,omitempty" hcl:"filter,optional"`
+	Filters []string `yaml:"filters,omitempty" json:"filters,omitempty" hcl:"filters,optional"`
+	Kind    string   `yaml:"kind,omitempty" json:"kind,omitempty" hcl:"kind,optional"`
 }
 
 type GraphQLSourceConfig struct {

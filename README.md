@@ -175,6 +175,22 @@ from:
     kind: Component
 ```
 
+For multiple Backstage selections, use `filters` instead of `kind` or `filter`:
+
+```yaml
+from:
+  backstage:
+    url: https://backstage.internal
+    token: "$(BACKSTAGE_TOKEN)"
+    filters:
+      - "kind=component,spec.type=service"
+      - "kind=component,spec.type=website"
+```
+
+Filter sets are ORed; comma-separated conditions inside each set are ANDed.
+All results are loaded into one source before reconciliation, so pruning uses
+the combined desired set. See the [Backstage filtering guide](docs/examples/backstage/#filtering-multiple-types-in-one-sync).
+
 #### GraphQL source
 
 ```yaml

@@ -16,18 +16,20 @@ import (
 var backstageHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 type BackstageSource struct {
-	URL    string
-	Token  string
-	Filter string
-	Kind   string
+	URL     string
+	Token   string
+	Filter  string
+	Filters []string
+	Kind    string
 }
 
 func NewBackstageSource(cfg *config.BackstageSourceConfig) *BackstageSource {
 	return &BackstageSource{
-		URL:    cfg.URL,
-		Token:  cfg.Token,
-		Filter: cfg.Filter,
-		Kind:   cfg.Kind,
+		URL:     cfg.URL,
+		Token:   cfg.Token,
+		Filter:  cfg.Filter,
+		Filters: cfg.Filters,
+		Kind:    cfg.Kind,
 	}
 }
 
@@ -103,7 +105,17 @@ func (s *BackstageSource) buildURL(offset, limit int) (string, error) {
 	q.Set("offset", fmt.Sprintf("%d", offset))
 	q.Set("limit", fmt.Sprintf("%d", limit))
 
-	if s.Filter != "" {
+	if len(s.Filters) > 0 {
+		if s.Filter != "" {
+			return "", fmt.Errorf("backstage: filter and filters cannot be used together")
+		}
+		for i, filter := range s.Filters {
+			if strings.TrimSpace(filter) == "" {
+				return "", fmt.Errorf("backstage: filters[%d] must not be empty", i)
+			}
+			q.Add("filter", filter)
+		}
+	} else if s.Filter != "" {
 		q.Set("filter", s.Filter)
 	} else if s.Kind != "" {
 		q.Set("filter", "kind="+s.Kind)
