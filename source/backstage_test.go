@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rootlyhq/rootly-catalog-sync/config"
@@ -178,9 +180,13 @@ func TestBackstageSource_WithKind(t *testing.T) {
 }
 
 func TestBackstageSource_Pagination(t *testing.T) {
+	filters := []string{"kind=component,spec.type=service", "kind=component,spec.type=website"}
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
+		if got := r.URL.Query()["filter"]; !slices.Equal(got, filters) {
+			t.Errorf("filters = %v, want %v on every page", got, filters)
+		}
 		offset := r.URL.Query().Get("offset")
 		w.Header().Set("Content-Type", "application/json")
 
@@ -208,7 +214,8 @@ func TestBackstageSource_Pagination(t *testing.T) {
 	defer server.Close()
 
 	src := NewBackstageSource(&config.BackstageSourceConfig{
-		URL: server.URL,
+		URL:     server.URL,
+		Filters: filters,
 	})
 
 	entries, err := src.Load(context.Background())
@@ -226,5 +233,47 @@ func TestBackstageSource_Pagination(t *testing.T) {
 	}
 	if entries[500]["name"] != "svc-page2" {
 		t.Errorf("expected last entry name=svc-page2, got %v", entries[500]["name"])
+	}
+}
+
+func TestBackstageSource_FilterSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		cfg     config.BackstageSourceConfig
+		want    []string
+		wantErr string
+	}{
+		{name: "unfiltered"},
+		{name: "kind fallback", cfg: config.BackstageSourceConfig{Kind: "Component"}, want: []string{"kind=Component"}},
+		{name: "legacy filter overrides kind", cfg: config.BackstageSourceConfig{Kind: "Component", Filter: "kind=api"}, want: []string{"kind=api"}},
+		{name: "OR filters override kind", cfg: config.BackstageSourceConfig{Kind: "API", Filters: []string{"kind=component,spec.type=service", "kind=component,spec.type=website"}}, want: []string{"kind=component,spec.type=service", "kind=component,spec.type=website"}},
+		{name: "empty list keeps legacy filter", cfg: config.BackstageSourceConfig{Filters: []string{}, Filter: "kind=api"}, want: []string{"kind=api"}},
+		{name: "ambiguous filters", cfg: config.BackstageSourceConfig{Filter: "kind=api", Filters: []string{"kind=component"}}, wantErr: "filter and filters cannot be used together"},
+		{name: "empty filter set", cfg: config.BackstageSourceConfig{Filters: []string{"kind=component", ""}}, wantErr: "filters[1] must not be empty"},
+		{name: "whitespace filter set", cfg: config.BackstageSourceConfig{Filters: []string{" \t"}}, wantErr: "filters[0] must not be empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				if got := r.URL.Query()["filter"]; !slices.Equal(got, tc.want) {
+					t.Errorf("filter query = %v, want %v", got, tc.want)
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+			}))
+			defer server.Close()
+			tc.cfg.URL = server.URL
+			_, err := NewBackstageSource(&tc.cfg).Load(context.Background())
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("error = %v, want %q", err, tc.wantErr)
+				}
+				if called {
+					t.Fatal("invalid filters must fail before fetching entities")
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
