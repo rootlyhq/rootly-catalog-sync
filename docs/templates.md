@@ -32,6 +32,19 @@ This produces:
 
 ## Built-in functions
 
+Templates include the [Sprig text-template functions](https://masterminds.github.io/sprig/),
+including `lower`, `upper`, `trim`, `replace`, and `dig`:
+
+```yaml
+map:
+  name: '{{ .name | trim | lower }}'
+  owner: '{{ dig "metadata" "owner" "unowned" . }}'
+```
+
+The existing `get` and `default` functions described below override Sprig's versions.
+`get` still errors for absent keys, and `default` still takes the value first and
+the fallback second. Other Sprig helpers retain their standard argument order.
+
 ### `get` -- nested map access
 
 Access nested fields safely:
@@ -69,9 +82,10 @@ map:
 |---------------|--------|
 | `"1"` | `1` |
 | `""` | `unknown` |
-| `nil` (field missing with `default`) | `unknown` |
+| `nil` (field present with a null value) | `unknown` |
 
-**Note:** `default` prevents the `missingkey=error` behavior for the wrapped field. If you want a hard error on missing fields, use `{{ .field }}` directly.
+**Note:** `default` handles null and empty values, but a missing field still causes
+an error before `default` runs. Use `dig` for a fallback when a key may be absent.
 
 ## Missing keys
 
@@ -84,11 +98,11 @@ entry 0: evaluating external_id: executing template:
 
 This is intentional -- it catches typos and schema mismatches early rather than silently producing empty values.
 
-**To make a field optional**, wrap it with `default`:
+**To make a field optional**, use `dig`:
 
 ```yaml
 map:
-  description: "{{ default .description \"\" }}"
+  description: '{{ dig "description" "" . }}'
 ```
 
 ## Static values
