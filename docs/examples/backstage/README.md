@@ -100,6 +100,45 @@ rootly-catalog-sync sync --config=docs/examples/backstage/rootly-catalog-sync.ya
 
 ## Filtering by kind
 
+The `kind` setting is a shorthand used when neither `filter` nor `filters` is set.
+
+## Filtering multiple types in one sync
+
+Use `filters` to select several entity types for a single Rootly target:
+
+```yaml
+version: 2
+sync:
+  - from:
+      backstage:
+        url: https://backstage.internal
+        token: "$(BACKSTAGE_TOKEN)"
+        filters:
+          - "kind=component,spec.type=service"
+          - "kind=component,spec.type=website"
+          - "kind=component,spec.type=cronjob"
+    to: service
+    map:
+      external_id: "{{ .backstage_id }}"
+      name: "{{ .name }}"
+      backstage_id: "{{ .backstage_id }}"
+```
+
+Each item becomes a separate `filter` query parameter on every page of the
+[Backstage API request](https://backstage.io/docs/features/software-catalog/api/catalog/).
+The API ORs those filter sets; comma-separated conditions within a set are ANDed.
+The source loads the complete result before reconciliation, so pruning compares
+against all selected types together. Keep selections for the same managed target
+in one sync entry when pruning.
+
+The existing scalar `filter` remains supported. Use either `filter` or `filters`;
+configuring both is an error, as is an empty or whitespace-only item in `filters`.
+An empty list behaves as if `filters` were omitted. Explicit filters override
+the `kind` shorthand, so include `kind=component` in each set when needed.
+The `filters` list also works in v1 sources and JSON, Jsonnet, and HCL configs.
+
+## Syncing different kinds to separate catalogs
+
 To sync multiple entity kinds into separate catalogs, add multiple sync entries:
 
 ```yaml
