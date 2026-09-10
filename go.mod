@@ -1,6 +1,6 @@
 module github.com/rootlyhq/rootly-catalog-sync
 
-go 1.25.0
+go 1.26.0
 
 require (
 	charm.land/lipgloss/v2 v2.0.6
@@ -14,7 +14,7 @@ require (
 	github.com/rootlyhq/rootly-go v0.12.0
 	github.com/spf13/cobra v1.10.2
 	github.com/zclconf/go-cty v1.19.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 )
