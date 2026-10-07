@@ -654,36 +654,17 @@ func catalogFields(ent catalog.DesiredEntity, known map[string]bool) []struct {
 	return fields
 }
 
+// makeLike returns a zeroed slice of length n with the same type as s. It lets
+// callers allocate rootly-go's anonymous entity slices without restating the
+// generated struct, so new SDK fields don't break compilation.
+func makeLike[S ~[]E, E any](_ S, n int) S {
+	return make(S, n)
+}
+
 func (c *Client) bulkUpsertServices(ctx context.Context, batch []catalog.DesiredEntity, known map[string]bool) (*BulkResult, error) {
-	sdkEntities := make([]struct {
-		AlertsEmailEnabled nullable.Nullable[bool]   `json:"alerts_email_enabled,omitempty"`
-		BackstageID        nullable.Nullable[string] `json:"backstage_id,omitempty"`
-		Color              nullable.Nullable[string] `json:"color,omitempty"`
-		CortexID           nullable.Nullable[string] `json:"cortex_id,omitempty"`
-		Description        nullable.Nullable[string] `json:"description,omitempty"`
-		ExternalID         string                    `json:"external_id"`
-		Fields             []struct {
-			CatalogFieldID    *string `json:"catalog_field_id,omitempty"`
-			CatalogPropertyID *string `json:"catalog_property_id,omitempty"`
-			Value             string  `json:"value"`
-		} `json:"fields,omitempty"`
-		GithubRepositoryBranch   nullable.Nullable[string]   `json:"github_repository_branch,omitempty"`
-		GithubRepositoryName     nullable.Nullable[string]   `json:"github_repository_name,omitempty"`
-		GitlabRepositoryBranch   nullable.Nullable[string]   `json:"gitlab_repository_branch,omitempty"`
-		GitlabRepositoryName     nullable.Nullable[string]   `json:"gitlab_repository_name,omitempty"`
-		KubernetesDeploymentName nullable.Nullable[string]   `json:"kubernetes_deployment_name,omitempty"`
-		Name                     *string                     `json:"name,omitempty"`
-		NotifyEmails             nullable.Nullable[[]string] `json:"notify_emails,omitempty"`
-		OpsgenieID               nullable.Nullable[string]   `json:"opsgenie_id,omitempty"`
-		OpsgenieTeamID           nullable.Nullable[string]   `json:"opsgenie_team_id,omitempty"`
-		OpslevelID               nullable.Nullable[string]   `json:"opslevel_id,omitempty"`
-		PagerdutyID              nullable.Nullable[string]   `json:"pagerduty_id,omitempty"`
-		Position                 nullable.Nullable[int]      `json:"position,omitempty"`
-		PublicDescription        nullable.Nullable[string]   `json:"public_description,omitempty"`
-		ServiceNowCiSysID        nullable.Nullable[string]   `json:"service_now_ci_sys_id,omitempty"`
-		ShowUptime               nullable.Nullable[bool]     `json:"show_uptime,omitempty"`
-		ShowUptimeLastDays       nullable.Nullable[int]      `json:"show_uptime_last_days,omitempty"`
-	}, len(batch))
+	var body rootly.BulkUpsertServices
+	body.Entities = makeLike(body.Entities, len(batch))
+	sdkEntities := body.Entities
 
 	for j, e := range batch {
 		sdkEntities[j].ExternalID = e.ExternalID
@@ -691,11 +672,10 @@ func (c *Client) bulkUpsertServices(ctx context.Context, batch []catalog.Desired
 		if e.BackstageID != "" {
 			sdkEntities[j].BackstageID = nullable.NewNullableWithValue(e.BackstageID)
 		}
-		setServiceAttrs(&sdkEntities[j], e.Fields)
+		setServiceAttrs(&body, j, e.Fields)
 		sdkEntities[j].Fields = catalogFields(e, known)
 	}
 
-	body := rootly.BulkUpsertServices{Entities: sdkEntities}
 	resp, err := c.sdk.BulkUpsertServicesWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("service"), err)
@@ -703,35 +683,8 @@ func (c *Client) bulkUpsertServices(ctx context.Context, batch []catalog.Desired
 	return parseBulkUpsertResponse(resp.StatusCode(), resp.Body)
 }
 
-func setServiceAttrs(ent *struct {
-	AlertsEmailEnabled nullable.Nullable[bool]   `json:"alerts_email_enabled,omitempty"`
-	BackstageID        nullable.Nullable[string] `json:"backstage_id,omitempty"`
-	Color              nullable.Nullable[string] `json:"color,omitempty"`
-	CortexID           nullable.Nullable[string] `json:"cortex_id,omitempty"`
-	Description        nullable.Nullable[string] `json:"description,omitempty"`
-	ExternalID         string                    `json:"external_id"`
-	Fields             []struct {
-		CatalogFieldID    *string `json:"catalog_field_id,omitempty"`
-		CatalogPropertyID *string `json:"catalog_property_id,omitempty"`
-		Value             string  `json:"value"`
-	} `json:"fields,omitempty"`
-	GithubRepositoryBranch   nullable.Nullable[string]   `json:"github_repository_branch,omitempty"`
-	GithubRepositoryName     nullable.Nullable[string]   `json:"github_repository_name,omitempty"`
-	GitlabRepositoryBranch   nullable.Nullable[string]   `json:"gitlab_repository_branch,omitempty"`
-	GitlabRepositoryName     nullable.Nullable[string]   `json:"gitlab_repository_name,omitempty"`
-	KubernetesDeploymentName nullable.Nullable[string]   `json:"kubernetes_deployment_name,omitempty"`
-	Name                     *string                     `json:"name,omitempty"`
-	NotifyEmails             nullable.Nullable[[]string] `json:"notify_emails,omitempty"`
-	OpsgenieID               nullable.Nullable[string]   `json:"opsgenie_id,omitempty"`
-	OpsgenieTeamID           nullable.Nullable[string]   `json:"opsgenie_team_id,omitempty"`
-	OpslevelID               nullable.Nullable[string]   `json:"opslevel_id,omitempty"`
-	PagerdutyID              nullable.Nullable[string]   `json:"pagerduty_id,omitempty"`
-	Position                 nullable.Nullable[int]      `json:"position,omitempty"`
-	PublicDescription        nullable.Nullable[string]   `json:"public_description,omitempty"`
-	ServiceNowCiSysID        nullable.Nullable[string]   `json:"service_now_ci_sys_id,omitempty"`
-	ShowUptime               nullable.Nullable[bool]     `json:"show_uptime,omitempty"`
-	ShowUptimeLastDays       nullable.Nullable[int]      `json:"show_uptime_last_days,omitempty"`
-}, fields map[string]string) {
+func setServiceAttrs(body *rootly.BulkUpsertServices, j int, fields map[string]string) {
+	ent := &body.Entities[j]
 	for k, v := range fields {
 		switch k {
 		case attrDescription:
@@ -771,29 +724,9 @@ func setServiceAttrs(ent *struct {
 }
 
 func (c *Client) bulkUpsertFunctionalities(ctx context.Context, batch []catalog.DesiredEntity, known map[string]bool) (*BulkResult, error) {
-	sdkEntities := make([]struct {
-		BackstageID nullable.Nullable[string] `json:"backstage_id,omitempty"`
-		Color       nullable.Nullable[string] `json:"color,omitempty"`
-		CortexID    nullable.Nullable[string] `json:"cortex_id,omitempty"`
-		Description nullable.Nullable[string] `json:"description,omitempty"`
-		ExternalID  string                    `json:"external_id"`
-		Fields      []struct {
-			CatalogFieldID    *string `json:"catalog_field_id,omitempty"`
-			CatalogPropertyID *string `json:"catalog_property_id,omitempty"`
-			Value             string  `json:"value"`
-		} `json:"fields,omitempty"`
-		Name               *string                     `json:"name,omitempty"`
-		NotifyEmails       nullable.Nullable[[]string] `json:"notify_emails,omitempty"`
-		OpsgenieID         nullable.Nullable[string]   `json:"opsgenie_id,omitempty"`
-		OpsgenieTeamID     nullable.Nullable[string]   `json:"opsgenie_team_id,omitempty"`
-		OpslevelID         nullable.Nullable[string]   `json:"opslevel_id,omitempty"`
-		PagerdutyID        nullable.Nullable[string]   `json:"pagerduty_id,omitempty"`
-		Position           nullable.Nullable[int]      `json:"position,omitempty"`
-		PublicDescription  nullable.Nullable[string]   `json:"public_description,omitempty"`
-		ServiceNowCiSysID  nullable.Nullable[string]   `json:"service_now_ci_sys_id,omitempty"`
-		ShowUptime         nullable.Nullable[bool]     `json:"show_uptime,omitempty"`
-		ShowUptimeLastDays nullable.Nullable[int]      `json:"show_uptime_last_days,omitempty"`
-	}, len(batch))
+	var body rootly.BulkUpsertFunctionalities
+	body.Entities = makeLike(body.Entities, len(batch))
+	sdkEntities := body.Entities
 
 	for j, e := range batch {
 		sdkEntities[j].ExternalID = e.ExternalID
@@ -826,7 +759,6 @@ func (c *Client) bulkUpsertFunctionalities(ctx context.Context, batch []catalog.
 		sdkEntities[j].Fields = catalogFields(e, known)
 	}
 
-	body := rootly.BulkUpsertFunctionalities{Entities: sdkEntities}
 	resp, err := c.sdk.BulkUpsertFunctionalitiesWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("functionality"), err)
@@ -835,19 +767,9 @@ func (c *Client) bulkUpsertFunctionalities(ctx context.Context, batch []catalog.
 }
 
 func (c *Client) bulkUpsertEnvironments(ctx context.Context, batch []catalog.DesiredEntity, known map[string]bool) (*BulkResult, error) {
-	sdkEntities := make([]struct {
-		Color       nullable.Nullable[string] `json:"color,omitempty"`
-		Description nullable.Nullable[string] `json:"description,omitempty"`
-		ExternalID  string                    `json:"external_id"`
-		Fields      []struct {
-			CatalogFieldID    *string `json:"catalog_field_id,omitempty"`
-			CatalogPropertyID *string `json:"catalog_property_id,omitempty"`
-			Value             string  `json:"value"`
-		} `json:"fields,omitempty"`
-		Name         *string                     `json:"name,omitempty"`
-		NotifyEmails nullable.Nullable[[]string] `json:"notify_emails,omitempty"`
-		Position     nullable.Nullable[int]      `json:"position,omitempty"`
-	}, len(batch))
+	var body rootly.BulkUpsertEnvironments
+	body.Entities = makeLike(body.Entities, len(batch))
+	sdkEntities := body.Entities
 
 	for j, e := range batch {
 		sdkEntities[j].ExternalID = e.ExternalID
@@ -867,7 +789,6 @@ func (c *Client) bulkUpsertEnvironments(ctx context.Context, batch []catalog.Des
 		sdkEntities[j].Fields = catalogFields(e, known)
 	}
 
-	body := rootly.BulkUpsertEnvironments{Entities: sdkEntities}
 	resp, err := c.sdk.BulkUpsertEnvironmentsWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("environment"), err)
@@ -876,29 +797,9 @@ func (c *Client) bulkUpsertEnvironments(ctx context.Context, batch []catalog.Des
 }
 
 func (c *Client) bulkUpsertTeams(ctx context.Context, batch []catalog.DesiredEntity, known map[string]bool) (*BulkResult, error) {
-	sdkEntities := make([]struct {
-		AlertsEmailEnabled nullable.Nullable[bool]   `json:"alerts_email_enabled,omitempty"`
-		BackstageID        nullable.Nullable[string] `json:"backstage_id,omitempty"`
-		Color              nullable.Nullable[string] `json:"color,omitempty"`
-		CortexID           nullable.Nullable[string] `json:"cortex_id,omitempty"`
-		Description        nullable.Nullable[string] `json:"description,omitempty"`
-		ExternalID         string                    `json:"external_id"`
-		Fields             []struct {
-			CatalogFieldID    *string `json:"catalog_field_id,omitempty"`
-			CatalogPropertyID *string `json:"catalog_property_id,omitempty"`
-			Value             string  `json:"value"`
-		} `json:"fields,omitempty"`
-		Name               *string                     `json:"name,omitempty"`
-		NotifyEmails       nullable.Nullable[[]string] `json:"notify_emails,omitempty"`
-		OpsgenieID         nullable.Nullable[string]   `json:"opsgenie_id,omitempty"`
-		OpslevelID         nullable.Nullable[string]   `json:"opslevel_id,omitempty"`
-		PagerdutyID        nullable.Nullable[string]   `json:"pagerduty_id,omitempty"`
-		PagerdutyServiceID nullable.Nullable[string]   `json:"pagerduty_service_id,omitempty"`
-		PagertreeID        nullable.Nullable[string]   `json:"pagertree_id,omitempty"`
-		Position           nullable.Nullable[int]      `json:"position,omitempty"`
-		ServiceNowCiSysID  nullable.Nullable[string]   `json:"service_now_ci_sys_id,omitempty"`
-		VictorOpsID        nullable.Nullable[string]   `json:"victor_ops_id,omitempty"`
-	}, len(batch))
+	var body rootly.BulkUpsertTeams
+	body.Entities = makeLike(body.Entities, len(batch))
+	sdkEntities := body.Entities
 
 	for j, e := range batch {
 		sdkEntities[j].ExternalID = e.ExternalID
@@ -939,7 +840,6 @@ func (c *Client) bulkUpsertTeams(ctx context.Context, batch []catalog.DesiredEnt
 		sdkEntities[j].Fields = catalogFields(e, known)
 	}
 
-	body := rootly.BulkUpsertTeams{Entities: sdkEntities}
 	resp, err := c.sdk.BulkUpsertGroupsWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("team"), err)
