@@ -422,17 +422,9 @@ func (c *Client) BulkUpsert(ctx context.Context, catalogID string, ents []catalo
 		}
 		batch := ents[i:end]
 
-		sdkEntities := make([]struct {
-			BackstageID nullable.Nullable[string] `json:"backstage_id,omitempty"`
-			Description nullable.Nullable[string] `json:"description,omitempty"`
-			ExternalID  string                    `json:"external_id"`
-			Fields      []struct {
-				CatalogFieldID    *string `json:"catalog_field_id,omitempty"`
-				CatalogPropertyID *string `json:"catalog_property_id,omitempty"`
-				Value             string  `json:"value"`
-			} `json:"fields,omitempty"`
-			Name *string `json:"name,omitempty"`
-		}, len(batch))
+		var body rootly.BulkUpsertCatalogEntities
+		body.Entities = makeLike(body.Entities, len(batch))
+		sdkEntities := body.Entities
 
 		for j, e := range batch {
 			sdkEntities[j].ExternalID = e.ExternalID
@@ -453,10 +445,6 @@ func (c *Client) BulkUpsert(ctx context.Context, catalogID string, ents []catalo
 					Value:          val,
 				})
 			}
-		}
-
-		body := rootly.BulkUpsertCatalogEntities{
-			Entities: sdkEntities,
 		}
 
 		resp, err := c.sdk.BulkUpsertCatalogEntitiesWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, catalogID, body)
