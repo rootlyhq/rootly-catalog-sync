@@ -793,3 +793,88 @@ func TestAdopt_ResolvesReferenceFields(t *testing.T) {
 		t.Errorf("expected tier resolved to ent-t2, got %s", desired[0].Fields["tier"])
 	}
 }
+
+func teamsServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/teams", func(w http.ResponseWriter, r *http.Request) {
+		team := func(id, name, externalID, backstageID string) map[string]any {
+			return map[string]any{"id": id, "type": "groups", "attributes": map[string]any{
+				"name": name, "slug": name, "external_id": externalID, "backstage_id": backstageID,
+				"created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+			}}
+		}
+		jsonAPI(w, map[string]any{
+			"data": []any{
+				team("t-sre", "SRE", "group:default/sre", "group:default/sre"),
+				team("t-core", "Core", "", "group:default/core"),
+			},
+			"links": map[string]any{"self": ""},
+			"meta":  map[string]any{"total_pages": 1, "current_page": 1, "total_count": 2},
+		})
+	})
+	return httptest.NewServer(mux)
+}
+
+func TestResolveReferenceFields_Teams(t *testing.T) {
+	srv := teamsServer(t)
+	defer srv.Close()
+	cl := client.New("test-key", client.WithBaseURL(srv.URL), client.WithMaxRetries(0))
+
+	out := config.Output{Type: client.NativeService, Fields: map[string]config.FieldValue{
+		client.AttrOwnerTeam: {Value: "{{ .owner }}"},
+		"responder":          {Value: "{{ .responder }}", Kind: config.KindGroup},
+	}}
+	desired := []catalog.DesiredEntity{
+		{ExternalID: "a", Fields: map[string]string{client.AttrOwnerTeam: "group:default/sre", "responder": "Core"}},
+		{ExternalID: "b", Fields: map[string]string{client.AttrOwnerTeam: "group:default/core", "responder": "t-sre"}},
+		{ExternalID: "c", Fields: map[string]string{client.AttrOwnerTeam: ""}},
+	}
+
+	if err := resolveReferenceFields(context.Background(), cl, out, desired); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	checks := []struct {
+		i          int
+		slug, want string
+	}{
+		{0, client.AttrOwnerTeam, "t-sre"},  // external_id
+		{0, "responder", "t-core"},          // name
+		{1, client.AttrOwnerTeam, "t-core"}, // backstage_id
+		{1, "responder", "t-sre"},           // id
+	}
+	for _, c := range checks {
+		if got := desired[c.i].Fields[c.slug]; got != c.want {
+			t.Errorf("desired[%d].%s = %q, want %q", c.i, c.slug, got, c.want)
+		}
+	}
+	if _, ok := desired[2].Fields[client.AttrOwnerTeam]; ok {
+		t.Error("expected empty owner_team to be dropped")
+	}
+}
+
+func TestResolveReferenceFields_UnknownTeam(t *testing.T) {
+	srv := teamsServer(t)
+	defer srv.Close()
+	cl := client.New("test-key", client.WithBaseURL(srv.URL), client.WithMaxRetries(0))
+
+	out := config.Output{Type: client.NativeService, Fields: map[string]config.FieldValue{client.AttrOwnerTeam: {Value: "{{ .owner }}"}}}
+	desired := []catalog.DesiredEntity{{ExternalID: "a", Fields: map[string]string{client.AttrOwnerTeam: "group:default/missing"}}}
+
+	err := resolveReferenceFields(context.Background(), cl, out, desired)
+	if err == nil || !strings.Contains(err.Error(), `team "group:default/missing" not found`) {
+		t.Fatalf("expected team not found error, got %v", err)
+	}
+}
+
+func TestResolveReferenceFields_OwnerTeamIgnoredOutsideServices(t *testing.T) {
+	out := config.Output{Type: client.NativeTeam, Fields: map[string]config.FieldValue{client.AttrOwnerTeam: {Value: "x"}}}
+	desired := []catalog.DesiredEntity{{ExternalID: "a", Fields: map[string]string{client.AttrOwnerTeam: "x"}}}
+
+	if err := resolveReferenceFields(context.Background(), nil, out, desired); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if desired[0].Fields[client.AttrOwnerTeam] != "x" {
+		t.Error("expected owner_team left as a plain field on teams")
+	}
+}

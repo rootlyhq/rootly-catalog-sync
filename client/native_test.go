@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/oapi-codegen/nullable"
+	rootly "github.com/rootlyhq/rootly-go"
+
 	"github.com/rootlyhq/rootly-catalog-sync/catalog"
 )
 
@@ -316,5 +319,51 @@ func TestIsNativeResource(t *testing.T) {
 				t.Errorf("IsNativeResource(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBulkUpsertNative_ServiceOwnerTeam(t *testing.T) {
+	var body map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/services/bulk_upsert", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := New("test-key", WithBaseURL(srv.URL), WithMaxRetries(0))
+	ents := []catalog.DesiredEntity{
+		{ExternalID: "owned", Name: "Owned", Fields: map[string]string{AttrOwnerTeam: "team-1", "description": "d"}},
+		{ExternalID: "unowned", Name: "Unowned", Fields: map[string]string{}},
+	}
+	if _, err := c.BulkUpsertNative(context.Background(), NativeService, ents); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entities := body["entities"].([]any)
+	owned := entities[0].(map[string]any)
+	ids, ok := owned["owner_group_ids"].([]any)
+	if !ok || len(ids) != 1 || ids[0] != "team-1" {
+		t.Errorf("expected owner_group_ids [team-1], got %v", owned["owner_group_ids"])
+	}
+	if owned["description"] != "d" {
+		t.Errorf("expected other attrs preserved, got %v", owned["description"])
+	}
+	if owned["fields"] != nil {
+		t.Errorf("owner_team must not be sent as a catalog field, got %v", owned["fields"])
+	}
+	if _, present := entities[1].(map[string]any)["owner_group_ids"]; present {
+		t.Error("expected owner_group_ids omitted for an entity without owner_team")
+	}
+}
+
+func TestServiceToLive_OwnerTeam(t *testing.T) {
+	svc := rootly.Service{Name: "svc", OwnerGroupIDs: nullable.NewNullableWithValue([]string{"team-1", "team-2"})}
+	if got := serviceToLive("id", svc, nil).Fields[AttrOwnerTeam]; got != "team-1,team-2" {
+		t.Errorf("expected owner_team=team-1,team-2, got %q", got)
+	}
+	if _, ok := serviceToLive("id", rootly.Service{Name: "svc"}, nil).Fields[AttrOwnerTeam]; ok {
+		t.Error("expected no owner_team for a service without owners")
 	}
 }

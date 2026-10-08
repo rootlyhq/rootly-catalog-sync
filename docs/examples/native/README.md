@@ -107,13 +107,27 @@ rootly-catalog-sync status  # verify
 
 ## Built-in fields per type
 
-**Services:** `description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opsgenie_team_id`, `opslevel_id`, `pagerduty_id`, `service_now_ci_sys_id`, `github_repository_name`, `github_repository_branch`, `gitlab_repository_name`, `gitlab_repository_branch`, `kubernetes_deployment_name`, `alerts_email_enabled`
+**Services:** `description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opsgenie_team_id`, `opslevel_id`, `pagerduty_id`, `service_now_ci_sys_id`, `github_repository_name`, `github_repository_branch`, `gitlab_repository_name`, `gitlab_repository_branch`, `kubernetes_deployment_name`, `alerts_email_enabled`, `owner_team`
 
 **Functionalities:** `description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opsgenie_team_id`, `opslevel_id`, `pagerduty_id`, `service_now_ci_sys_id`
 
 **Environments:** `description`, `color`, `position`
 
 **Teams:** `description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opslevel_id`, `pagerduty_id`, `pagerduty_service_id`, `pagertree_id`, `victor_ops_id`, `service_now_ci_sys_id`, `alerts_email_enabled`
+
+### Owning team
+
+`owner_team` sets a service's owning team. The value can be a team's ID, `external_id`, `backstage_id` or name (matched in that order), so a Backstage owner such as `group:default/sre` resolves directly when teams were synced from Backstage:
+
+```yaml
+    to: service
+    map:
+      external_id: "{{ .metadata.name }}"
+      name: "{{ .metadata.name }}"
+      owner_team: "{{ .spec.owner }}"
+```
+
+The team must already exist in Rootly (sync teams in an earlier run). An empty value leaves the service's current owners unchanged. Requires a Rootly API that accepts `owner_group_ids` on `POST /v1/services/bulk_upsert`.
 
 ## Custom properties
 

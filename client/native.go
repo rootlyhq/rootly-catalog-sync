@@ -1,10 +1,12 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/oapi-codegen/nullable"
 	rootly "github.com/rootlyhq/rootly-go"
@@ -40,6 +42,9 @@ const (
 	attrVictorOpsID        = "victor_ops_id"
 	attrServiceNowCiSysID  = "service_now_ci_sys_id"
 	attrAlertsEmailEnabled = "alerts_email_enabled"
+	// AttrOwnerTeam is the service's owning team. Desired values are resolved to a
+	// team ID before diffing; live values are the service's owner_group_ids.
+	AttrOwnerTeam = "owner_team"
 )
 
 // NativeKnownAttrs returns the known writable attributes for a native resource type.
@@ -57,6 +62,7 @@ var nativeKnownAttrsMap = map[string]map[string]bool{
 		"github_repository_name": true, "github_repository_branch": true,
 		"gitlab_repository_name": true, "gitlab_repository_branch": true,
 		"kubernetes_deployment_name": true, attrAlertsEmailEnabled: true,
+		AttrOwnerTeam: true,
 	},
 	NativeFunctionality: {
 		attrDescription: true, attrColor: true, attrBackstageID: true, attrCortexID: true,
@@ -349,6 +355,11 @@ func serviceToLive(id string, s rootly.Service, propIDToSlug map[string]string) 
 	setNullableStr(s.GitlabRepositoryBranch, "gitlab_repository_branch", ent.Fields)
 	setNullableStr(s.KubernetesDeploymentName, "kubernetes_deployment_name", ent.Fields)
 	setNullableBool(s.AlertsEmailEnabled, attrAlertsEmailEnabled, ent.Fields)
+	if s.OwnerGroupIDs.IsSpecified() && !s.OwnerGroupIDs.IsNull() {
+		if ids := s.OwnerGroupIDs.MustGet(); len(ids) > 0 {
+			ent.Fields[AttrOwnerTeam] = strings.Join(ids, ",")
+		}
+	}
 	readProperties(s.Properties, propIDToSlug, ent.Fields)
 
 	return ent
@@ -676,11 +687,53 @@ func (c *Client) bulkUpsertServices(ctx context.Context, batch []catalog.Desired
 		sdkEntities[j].Fields = catalogFields(e, known)
 	}
 
-	resp, err := c.sdk.BulkUpsertServicesWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
+	payload, err := withServiceOwners(body, batch)
+	if err != nil {
+		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("service"), err)
+	}
+	resp, err := c.sdk.BulkUpsertServicesWithBodyWithResponse(ctx, "application/vnd.api+json", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("service"), err)
 	}
 	return parseBulkUpsertResponse(resp.StatusCode(), resp.Body)
+}
+
+// withServiceOwners encodes body, adding owner_group_ids to entities that map an
+// owner_team. rootly-go's BulkUpsertServices doesn't model owner_group_ids yet.
+func withServiceOwners(body rootly.BulkUpsertServices, batch []catalog.DesiredEntity) ([]byte, error) {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	hasOwners := false
+	for _, e := range batch {
+		if e.Fields[AttrOwnerTeam] != "" {
+			hasOwners = true
+			break
+		}
+	}
+	if !hasOwners {
+		return raw, nil
+	}
+
+	var doc struct {
+		Entities []map[string]json.RawMessage `json:"entities"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	for j, e := range batch {
+		owner := e.Fields[AttrOwnerTeam]
+		if owner == "" {
+			continue
+		}
+		ids, err := json.Marshal(strings.Split(owner, ","))
+		if err != nil {
+			return nil, err
+		}
+		doc.Entities[j]["owner_group_ids"] = ids
+	}
+	return json.Marshal(doc)
 }
 
 func setServiceAttrs(body *rootly.BulkUpsertServices, j int, fields map[string]string) {
