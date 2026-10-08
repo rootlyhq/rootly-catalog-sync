@@ -367,3 +367,43 @@ func TestServiceToLive_OwnerTeam(t *testing.T) {
 		t.Error("expected no owner_team for a service without owners")
 	}
 }
+
+func TestBulkUpsertNative_FunctionalityOwnerTeam(t *testing.T) {
+	var body map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/functionalities/bulk_upsert", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := New("test-key", WithBaseURL(srv.URL), WithMaxRetries(0))
+	ents := []catalog.DesiredEntity{
+		{ExternalID: "owned", Name: "Owned", Fields: map[string]string{AttrOwnerTeam: "team-1", "description": "d"}},
+		{ExternalID: "unowned", Name: "Unowned", Fields: map[string]string{}},
+	}
+	if _, err := c.BulkUpsertNative(context.Background(), NativeFunctionality, ents); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entities := body["entities"].([]any)
+	owned := entities[0].(map[string]any)
+	ids, ok := owned["owner_group_ids"].([]any)
+	if !ok || len(ids) != 1 || ids[0] != "team-1" {
+		t.Errorf("expected owner_group_ids [team-1], got %v", owned["owner_group_ids"])
+	}
+	if owned["description"] != "d" || owned["fields"] != nil {
+		t.Errorf("expected description kept and no catalog fields, got %v", owned)
+	}
+	if _, present := entities[1].(map[string]any)["owner_group_ids"]; present {
+		t.Error("expected owner_group_ids omitted for an entity without owner_team")
+	}
+}
+
+func TestFunctionalityToLive_OwnerTeam(t *testing.T) {
+	f := rootly.Functionality{Name: "f", OwnerGroupIDs: nullable.NewNullableWithValue([]string{"team-1"})}
+	if got := functionalityToLive("id", f, nil).Fields[AttrOwnerTeam]; got != "team-1" {
+		t.Errorf("expected owner_team=team-1, got %q", got)
+	}
+}

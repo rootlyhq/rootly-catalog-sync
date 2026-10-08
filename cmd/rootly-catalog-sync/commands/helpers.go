@@ -429,14 +429,14 @@ func resolveReferenceFields(ctx context.Context, cl *client.Client, out config.O
 	return nil
 }
 
-// resolveTeamFields replaces team references with team IDs in a service's
-// owner_team and in kind: group fields. A reference matches a team's ID,
+// resolveTeamFields replaces team references with team IDs in owner_team (on
+// services and functionalities) and in kind: group fields. A reference matches a team's ID,
 // external_id, backstage_id or name, in that order. Empty values are dropped so
 // they leave the live value unchanged.
 func resolveTeamFields(ctx context.Context, cl *client.Client, out config.Output, desired []catalog.DesiredEntity) error {
 	var slugs []string
 	for slug, fv := range out.Fields {
-		if fv.Kind == config.KindGroup || (out.Type == client.NativeService && slug == client.AttrOwnerTeam) {
+		if fv.Kind == config.KindGroup || (client.HasOwnerTeam(out.Type) && slug == client.AttrOwnerTeam) {
 			slugs = append(slugs, slug)
 		}
 	}

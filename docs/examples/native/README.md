@@ -109,7 +109,7 @@ rootly-catalog-sync status  # verify
 
 **Services:** `description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opsgenie_team_id`, `opslevel_id`, `pagerduty_id`, `service_now_ci_sys_id`, `github_repository_name`, `github_repository_branch`, `gitlab_repository_name`, `gitlab_repository_branch`, `kubernetes_deployment_name`, `alerts_email_enabled`, `owner_team`
 
-**Functionalities:** `description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opsgenie_team_id`, `opslevel_id`, `pagerduty_id`, `service_now_ci_sys_id`
+**Functionalities:** `description`, `color`, `backstage_id`, `cortex_id`, `opsgenie_id`, `opsgenie_team_id`, `opslevel_id`, `pagerduty_id`, `service_now_ci_sys_id`, `owner_team`
 
 **Environments:** `description`, `color`, `position`
 
@@ -117,7 +117,7 @@ rootly-catalog-sync status  # verify
 
 ### Owning team
 
-`owner_team` sets a service's owning team. The value can be a team's ID, `external_id`, `backstage_id` or name (matched in that order), so a Backstage owner such as `group:default/sre` resolves directly when teams were synced from Backstage:
+`owner_team` sets a service's or functionality's owning team. The value can be a team's ID, `external_id`, `backstage_id` or name (matched in that order), so a Backstage owner such as `group:default/sre` resolves directly when teams were synced from Backstage:
 
 ```yaml
     to: service
@@ -127,7 +127,7 @@ rootly-catalog-sync status  # verify
       owner_team: "{{ .spec.owner }}"
 ```
 
-The team must already exist in Rootly (sync teams in an earlier run). An empty value leaves the service's current owners unchanged. Requires a Rootly API that accepts `owner_group_ids` on `POST /v1/services/bulk_upsert`.
+The team must already exist in Rootly (sync teams in an earlier run). An empty value leaves the current owners unchanged. Requires a Rootly API that accepts `owner_group_ids` on `POST /v1/services/bulk_upsert` and `POST /v1/functionalities/bulk_upsert`.
 
 ## Custom properties
 

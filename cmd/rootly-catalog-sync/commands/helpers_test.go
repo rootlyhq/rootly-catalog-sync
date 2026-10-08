@@ -878,3 +878,19 @@ func TestResolveReferenceFields_OwnerTeamIgnoredOutsideServices(t *testing.T) {
 		t.Error("expected owner_team left as a plain field on teams")
 	}
 }
+
+func TestResolveReferenceFields_FunctionalityOwnerTeam(t *testing.T) {
+	srv := teamsServer(t)
+	defer srv.Close()
+	cl := client.New("test-key", client.WithBaseURL(srv.URL), client.WithMaxRetries(0))
+
+	out := config.Output{Type: client.NativeFunctionality, Fields: map[string]config.FieldValue{client.AttrOwnerTeam: {Value: "{{ .owner }}"}}}
+	desired := []catalog.DesiredEntity{{ExternalID: "a", Fields: map[string]string{client.AttrOwnerTeam: "group:default/sre"}}}
+
+	if err := resolveReferenceFields(context.Background(), cl, out, desired); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := desired[0].Fields[client.AttrOwnerTeam]; got != "t-sre" {
+		t.Errorf("owner_team = %q, want t-sre", got)
+	}
+}

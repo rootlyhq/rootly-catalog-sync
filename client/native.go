@@ -42,8 +42,8 @@ const (
 	attrVictorOpsID        = "victor_ops_id"
 	attrServiceNowCiSysID  = "service_now_ci_sys_id"
 	attrAlertsEmailEnabled = "alerts_email_enabled"
-	// AttrOwnerTeam is the service's owning team. Desired values are resolved to a
-	// team ID before diffing; live values are the service's owner_group_ids.
+	// AttrOwnerTeam is a service's or functionality's owning team. Desired values
+	// are resolved to a team ID before diffing; live values are owner_group_ids.
 	AttrOwnerTeam = "owner_team"
 )
 
@@ -68,6 +68,7 @@ var nativeKnownAttrsMap = map[string]map[string]bool{
 		attrDescription: true, attrColor: true, attrBackstageID: true, attrCortexID: true,
 		attrOpsgenieID: true, attrOpsgenieTeamID: true, attrOpslevelID: true,
 		attrPagerdutyID: true, attrServiceNowCiSysID: true,
+		AttrOwnerTeam: true,
 	},
 	NativeEnvironment: {
 		attrDescription: true, attrColor: true, "position": true,
@@ -355,11 +356,7 @@ func serviceToLive(id string, s rootly.Service, propIDToSlug map[string]string) 
 	setNullableStr(s.GitlabRepositoryBranch, "gitlab_repository_branch", ent.Fields)
 	setNullableStr(s.KubernetesDeploymentName, "kubernetes_deployment_name", ent.Fields)
 	setNullableBool(s.AlertsEmailEnabled, attrAlertsEmailEnabled, ent.Fields)
-	if s.OwnerGroupIDs.IsSpecified() && !s.OwnerGroupIDs.IsNull() {
-		if ids := s.OwnerGroupIDs.MustGet(); len(ids) > 0 {
-			ent.Fields[AttrOwnerTeam] = strings.Join(ids, ",")
-		}
-	}
+	setOwnerTeam(s.OwnerGroupIDs, ent.Fields)
 	readProperties(s.Properties, propIDToSlug, ent.Fields)
 
 	return ent
@@ -420,9 +417,23 @@ func functionalityToLive(id string, f rootly.Functionality, propIDToSlug map[str
 	setNullableStr(f.OpsgenieTeamID, attrOpsgenieTeamID, ent.Fields)
 	setNullableStr(f.PagerdutyID, attrPagerdutyID, ent.Fields)
 	setNullableStr(f.ServiceNowCiSysID, attrServiceNowCiSysID, ent.Fields)
+	setOwnerTeam(f.OwnerGroupIDs, ent.Fields)
 	readProperties(f.Properties, propIDToSlug, ent.Fields)
 
 	return ent
+}
+
+// HasOwnerTeam reports whether resources of type t support the owner_team built-in.
+func HasOwnerTeam(t string) bool {
+	return t == NativeService || t == NativeFunctionality
+}
+
+func setOwnerTeam(ids nullable.Nullable[[]string], fields map[string]string) {
+	if ids.IsSpecified() && !ids.IsNull() {
+		if v := ids.MustGet(); len(v) > 0 {
+			fields[AttrOwnerTeam] = strings.Join(v, ",")
+		}
+	}
 }
 
 func (c *Client) listEnvironments(ctx context.Context, propIDToSlug map[string]string) ([]catalog.LiveEntity, error) {
@@ -687,7 +698,7 @@ func (c *Client) bulkUpsertServices(ctx context.Context, batch []catalog.Desired
 		sdkEntities[j].Fields = catalogFields(e, known)
 	}
 
-	payload, err := withServiceOwners(body, batch)
+	payload, err := withOwners(body, batch)
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("service"), err)
 	}
@@ -698,9 +709,9 @@ func (c *Client) bulkUpsertServices(ctx context.Context, batch []catalog.Desired
 	return parseBulkUpsertResponse(resp.StatusCode(), resp.Body)
 }
 
-// withServiceOwners encodes body, adding owner_group_ids to entities that map an
-// owner_team. rootly-go's BulkUpsertServices doesn't model owner_group_ids yet.
-func withServiceOwners(body rootly.BulkUpsertServices, batch []catalog.DesiredEntity) ([]byte, error) {
+// withOwners encodes a bulk upsert body, adding owner_group_ids to entities that
+// map an owner_team. rootly-go's bulk upsert types don't model owner_group_ids yet.
+func withOwners(body any, batch []catalog.DesiredEntity) ([]byte, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -812,7 +823,11 @@ func (c *Client) bulkUpsertFunctionalities(ctx context.Context, batch []catalog.
 		sdkEntities[j].Fields = catalogFields(e, known)
 	}
 
-	resp, err := c.sdk.BulkUpsertFunctionalitiesWithApplicationVndAPIPlusJSONBodyWithResponse(ctx, body)
+	payload, err := withOwners(body, batch)
+	if err != nil {
+		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("functionality"), err)
+	}
+	resp, err := c.sdk.BulkUpsertFunctionalitiesWithBodyWithResponse(ctx, "application/vnd.api+json", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("bulk upsert %s: %w", resourceTypePlural("functionality"), err)
 	}
