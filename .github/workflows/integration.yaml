@@ -341,3 +341,79 @@ jobs:
           OUTPUT=$(./rootly-catalog-sync sync 2>&1)
           echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ native team idempotent"
           echo "=== native teams passed ==="
+
+      - name: Integration — native owner_team
+        env:
+          ROOTLY_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
+        run: |
+          set -euo pipefail
+          # write_config <owner team letter> <map owner_team: yes|no>
+          write_config() {
+            local owner="group:default/ci-owner-$1-$RUN_ID" owner_map=""
+            if [ "$2" = yes ]; then owner_map='      owner_team: "{{ .owner }}"'; fi
+            cat > rootly-catalog-sync.yaml <<EOF
+          version: 2
+          sync:
+            - from:
+                inline:
+                  entries:
+                    - id: "group:default/ci-owner-a-$RUN_ID"
+                      name: CI Owner Team A $RUN_ID
+                    - id: "group:default/ci-owner-b-$RUN_ID"
+                      name: CI Owner Team B $RUN_ID
+              to: team
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+            - from:
+                inline:
+                  entries:
+                    - id: ci-owned-svc-$RUN_ID
+                      name: CI Owned Service $RUN_ID
+                      owner: "$owner"
+              to: service
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+          $owner_map
+            - from:
+                inline:
+                  entries:
+                    - id: ci-owned-func-$RUN_ID
+                      name: CI Owned Functionality $RUN_ID
+                      owner: "$owner"
+              to: functionality
+              map:
+                external_id: "{{ .id }}"
+                name: "{{ .name }}"
+          $owner_map
+          EOF
+          }
+
+          write_config a yes
+          ./rootly-catalog-sync sync
+          echo "✓ owner_team create"
+          ./rootly-catalog-sync status --fail-on-drift && echo "✓ owner_team in sync"
+          OUTPUT=$(./rootly-catalog-sync sync 2>&1)
+          echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ owner_team idempotent"
+
+          write_config b yes
+          ./rootly-catalog-sync plan --output=json | python3 -c '
+          import json, sys
+          raw, dec, pos, owner_updates = sys.stdin.read(), json.JSONDecoder(), 0, 0
+          while (pos := raw.find("{", pos)) != -1:
+              plan, pos = dec.raw_decode(raw, pos)
+              owner_updates += sum("owner_team" in (c.get("field_diffs") or {}) for c in plan.get("changes") or [])
+          assert owner_updates == 2, f"expected 2 owner_team updates, got {owner_updates}"
+          '
+          echo "✓ owner_team reassignment planned"
+          ./rootly-catalog-sync sync
+          ./rootly-catalog-sync status --fail-on-drift && echo "✓ owner_team reassigned"
+
+          # Omitting owner_team must leave the team B owners untouched
+          write_config a no
+          ./rootly-catalog-sync sync
+          write_config b yes
+          ./rootly-catalog-sync status --fail-on-drift && echo "✓ owner_team preserved when omitted"
+
+          echo "=== native owner_team passed ==="
