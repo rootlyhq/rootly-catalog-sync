@@ -828,7 +828,7 @@ func TestResolveReferenceFields_Teams(t *testing.T) {
 	desired := []catalog.DesiredEntity{
 		{ExternalID: "a", Fields: map[string]string{client.AttrOwnerTeam: "group:default/sre", "responder": "Core"}},
 		{ExternalID: "b", Fields: map[string]string{client.AttrOwnerTeam: "group:default/core", "responder": "t-sre"}},
-		{ExternalID: "c", Fields: map[string]string{client.AttrOwnerTeam: ""}},
+		{ExternalID: "c", Fields: map[string]string{client.AttrOwnerTeam: "", "responder": ""}},
 	}
 
 	if err := resolveReferenceFields(context.Background(), cl, out, desired); err != nil {
@@ -850,6 +850,9 @@ func TestResolveReferenceFields_Teams(t *testing.T) {
 	}
 	if _, ok := desired[2].Fields[client.AttrOwnerTeam]; ok {
 		t.Error("expected empty owner_team to be dropped")
+	}
+	if got, ok := desired[2].Fields["responder"]; !ok || got != "" {
+		t.Errorf("expected empty kind: group value to be kept to clear the live value, got %q (present=%v)", got, ok)
 	}
 }
 
