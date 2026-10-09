@@ -390,10 +390,28 @@ jobs:
           EOF
           }
 
+          # The shared account keeps records from other steps and runs, which
+          # status reports as deletes, so only creates/updates count as drift.
+          assert_owned_in_sync() {
+            ./rootly-catalog-sync status --output=json | python3 -c '
+          import json, sys
+          raw, dec, pos, noops, drift = sys.stdin.read(), json.JSONDecoder(), 0, 0, []
+          while (pos := raw.find("{", pos)) != -1:
+              plan, pos = dec.raw_decode(raw, pos)
+              for c in plan.get("changes") or []:
+                  if c["op"] in ("create", "update"):
+                      drift.append(c)
+                  elif c["op"] == "noop" and c["external_id"].startswith(("ci-owned-", "group:default/ci-owner-")):
+                      noops += 1
+          assert not drift, f"drift: {drift}"
+          assert noops == 4, f"expected 4 in-sync owner_team records, got {noops}"
+          '
+          }
+
           write_config a yes
           ./rootly-catalog-sync sync
           echo "✓ owner_team create"
-          ./rootly-catalog-sync status --fail-on-drift
+          assert_owned_in_sync
           echo "✓ owner_team in sync"
           OUTPUT=$(./rootly-catalog-sync sync 2>&1)
           echo "$OUTPUT" | grep -q "Already in sync"
@@ -410,14 +428,14 @@ jobs:
           '
           echo "✓ owner_team reassignment planned"
           ./rootly-catalog-sync sync
-          ./rootly-catalog-sync status --fail-on-drift
+          assert_owned_in_sync
           echo "✓ owner_team reassigned"
 
           # Omitting owner_team must leave the team B owners untouched
           write_config a no
           ./rootly-catalog-sync sync
           write_config b yes
-          ./rootly-catalog-sync status --fail-on-drift
+          assert_owned_in_sync
           echo "✓ owner_team preserved when omitted"
 
           echo "=== native owner_team passed ==="
