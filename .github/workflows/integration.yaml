@@ -393,9 +393,11 @@ jobs:
           write_config a yes
           ./rootly-catalog-sync sync
           echo "✓ owner_team create"
-          ./rootly-catalog-sync status --fail-on-drift && echo "✓ owner_team in sync"
+          ./rootly-catalog-sync status --fail-on-drift
+          echo "✓ owner_team in sync"
           OUTPUT=$(./rootly-catalog-sync sync 2>&1)
-          echo "$OUTPUT" | grep -q "Already in sync" && echo "✓ owner_team idempotent"
+          echo "$OUTPUT" | grep -q "Already in sync"
+          echo "✓ owner_team idempotent"
 
           write_config b yes
           ./rootly-catalog-sync plan --output=json | python3 -c '
@@ -408,12 +410,14 @@ jobs:
           '
           echo "✓ owner_team reassignment planned"
           ./rootly-catalog-sync sync
-          ./rootly-catalog-sync status --fail-on-drift && echo "✓ owner_team reassigned"
+          ./rootly-catalog-sync status --fail-on-drift
+          echo "✓ owner_team reassigned"
 
           # Omitting owner_team must leave the team B owners untouched
           write_config a no
           ./rootly-catalog-sync sync
           write_config b yes
-          ./rootly-catalog-sync status --fail-on-drift && echo "✓ owner_team preserved when omitted"
+          ./rootly-catalog-sync status --fail-on-drift
+          echo "✓ owner_team preserved when omitted"
 
           echo "=== native owner_team passed ==="
