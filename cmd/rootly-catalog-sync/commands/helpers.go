@@ -281,7 +281,7 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 		return nil, err
 	}
 
-	known := client.NativeKnownAttrs(out.Type)
+	known := client.KnownAttrsWithProps(out.Type, props)
 	var customFields []string
 	for slug := range out.Fields {
 		if !known[slug] {
@@ -363,6 +363,10 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 }
 
 func resolveReferenceFields(ctx context.Context, cl *client.Client, out config.Output, desired []catalog.DesiredEntity) error {
+	if err := resolveTeamFields(ctx, cl, out, desired); err != nil {
+		return err
+	}
+
 	refCatalogs := make(map[string]string)
 	for slug, fv := range out.Fields {
 		if fv.Kind == config.KindReference && fv.Catalog != "" {
@@ -423,4 +427,83 @@ func resolveReferenceFields(ctx context.Context, cl *client.Client, out config.O
 		}
 	}
 	return nil
+}
+
+// resolveTeamFields replaces team references with team IDs in owner_team (on
+// services and functionalities) and in kind: group fields. A reference matches a team's ID,
+// external_id, backstage_id or name, in that order. An empty owner_team is
+// dropped so it leaves the live owners unchanged; an empty kind: group value is
+// kept so it clears the live value.
+func resolveTeamFields(ctx context.Context, cl *client.Client, out config.Output, desired []catalog.DesiredEntity) error {
+	ownerBuiltin := false
+	if _, mapped := out.Fields[client.AttrOwnerTeam]; mapped {
+		var err error
+		if ownerBuiltin, err = cl.OwnerTeamIsBuiltin(ctx, out.Type); err != nil {
+			return fmt.Errorf("checking %s properties: %w", out.Type, err)
+		}
+	}
+
+	var slugs []string
+	for slug, fv := range out.Fields {
+		if fv.Kind == config.KindGroup || (ownerBuiltin && slug == client.AttrOwnerTeam) {
+			slugs = append(slugs, slug)
+		}
+	}
+	if len(slugs) == 0 {
+		return nil
+	}
+
+	teams, err := cl.ListNativeResourcesWithProps(ctx, client.NativeTeam, nil)
+	if err != nil {
+		return fmt.Errorf("listing teams: %w", err)
+	}
+	lookup := teamLookup(teams)
+
+	for i := range desired {
+		for _, slug := range slugs {
+			ref, ok := desired[i].Fields[slug]
+			if !ok {
+				continue
+			}
+			if ref == "" {
+				if ownerBuiltin && slug == client.AttrOwnerTeam {
+					delete(desired[i].Fields, slug)
+				}
+				continue
+			}
+			id, found := lookup(ref)
+			if !found {
+				return fmt.Errorf("field %q on %q: team %q not found (matched against team id, external_id, backstage_id and name) — sync the team first",
+					slug, desired[i].ExternalID, ref)
+			}
+			desired[i].Fields[slug] = id
+		}
+	}
+	return nil
+}
+
+func teamLookup(teams []catalog.LiveEntity) func(string) (string, bool) {
+	indexes := make([]map[string]string, 4)
+	for k := range indexes {
+		indexes[k] = make(map[string]string, len(teams))
+	}
+	for _, t := range teams {
+		keys := []string{t.ID, t.ExternalID, t.Fields["backstage_id"], t.Name}
+		for k, key := range keys {
+			if key == "" {
+				continue
+			}
+			if _, dup := indexes[k][key]; !dup {
+				indexes[k][key] = t.ID
+			}
+		}
+	}
+	return func(ref string) (string, bool) {
+		for _, idx := range indexes {
+			if id, ok := idx[ref]; ok {
+				return id, true
+			}
+		}
+		return "", false
+	}
 }
