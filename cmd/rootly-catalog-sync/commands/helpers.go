@@ -281,7 +281,7 @@ func ensureNativeOutputFields(ctx context.Context, cl *client.Client, out config
 		return nil, err
 	}
 
-	known := client.NativeKnownAttrs(out.Type)
+	known := client.KnownAttrsWithProps(out.Type, props)
 	var customFields []string
 	for slug := range out.Fields {
 		if !known[slug] {
@@ -435,9 +435,17 @@ func resolveReferenceFields(ctx context.Context, cl *client.Client, out config.O
 // dropped so it leaves the live owners unchanged; an empty kind: group value is
 // kept so it clears the live value.
 func resolveTeamFields(ctx context.Context, cl *client.Client, out config.Output, desired []catalog.DesiredEntity) error {
+	ownerBuiltin := false
+	if _, mapped := out.Fields[client.AttrOwnerTeam]; mapped {
+		var err error
+		if ownerBuiltin, err = cl.OwnerTeamIsBuiltin(ctx, out.Type); err != nil {
+			return fmt.Errorf("checking %s properties: %w", out.Type, err)
+		}
+	}
+
 	var slugs []string
 	for slug, fv := range out.Fields {
-		if fv.Kind == config.KindGroup || (client.HasOwnerTeam(out.Type) && slug == client.AttrOwnerTeam) {
+		if fv.Kind == config.KindGroup || (ownerBuiltin && slug == client.AttrOwnerTeam) {
 			slugs = append(slugs, slug)
 		}
 	}
@@ -458,7 +466,7 @@ func resolveTeamFields(ctx context.Context, cl *client.Client, out config.Output
 				continue
 			}
 			if ref == "" {
-				if client.HasOwnerTeam(out.Type) && slug == client.AttrOwnerTeam {
+				if ownerBuiltin && slug == client.AttrOwnerTeam {
 					delete(desired[i].Fields, slug)
 				}
 				continue

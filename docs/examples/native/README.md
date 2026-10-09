@@ -127,7 +127,7 @@ rootly-catalog-sync status  # verify
       owner_team: "{{ .spec.owner }}"
 ```
 
-The team must already exist in Rootly (sync teams in an earlier run). An empty value leaves the current owners unchanged. Requires a Rootly API that accepts `owner_group_ids` on `POST /v1/services/bulk_upsert` and `POST /v1/functionalities/bulk_upsert`.
+The team must already exist in Rootly (sync teams in an earlier run). An empty value leaves the current owners unchanged. If the service or functionality already has a custom property with the slug `owner_team`, that property keeps syncing as a property and the owning team is left alone. Requires a Rootly API that accepts `owner_group_ids` on `POST /v1/services/bulk_upsert` and `POST /v1/functionalities/bulk_upsert`.
 
 ## Custom properties
 

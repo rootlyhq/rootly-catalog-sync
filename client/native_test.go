@@ -325,6 +325,7 @@ func TestIsNativeResource(t *testing.T) {
 func TestBulkUpsertNative_ServiceOwnerTeam(t *testing.T) {
 	var body map[string]any
 	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/services/properties", nativePropertiesHandler())
 	mux.HandleFunc("/v1/services/bulk_upsert", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
@@ -371,6 +372,7 @@ func TestServiceToLive_OwnerTeam(t *testing.T) {
 func TestBulkUpsertNative_FunctionalityOwnerTeam(t *testing.T) {
 	var body map[string]any
 	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/functionalities/properties", nativePropertiesHandler())
 	mux.HandleFunc("/v1/functionalities/bulk_upsert", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
@@ -405,5 +407,68 @@ func TestFunctionalityToLive_OwnerTeam(t *testing.T) {
 	f := rootly.Functionality{Name: "f", OwnerGroupIDs: nullable.NewNullableWithValue([]string{"team-1"})}
 	if got := functionalityToLive("id", f, nil).Fields[AttrOwnerTeam]; got != "team-1" {
 		t.Errorf("expected owner_team=team-1, got %q", got)
+	}
+}
+
+func nativePropertiesHandler(slugs ...string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data := make([]map[string]any, len(slugs))
+		for i, slug := range slugs {
+			data[i] = map[string]any{"id": "prop-" + slug, "type": "catalog_properties", "attributes": map[string]any{
+				"name": slug, "slug": slug, "kind": "text",
+				"created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+			}}
+		}
+		w.Header().Set("Content-Type", "application/vnd.api+json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": data, "links": map[string]any{"self": ""},
+			"meta": map[string]any{"total_pages": 1, "current_page": 1, "total_count": len(data)},
+		})
+	}
+}
+
+func TestBulkUpsertNative_OwnerTeamCustomProperty(t *testing.T) {
+	var body map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/services/properties", nativePropertiesHandler(AttrOwnerTeam))
+	mux.HandleFunc("/v1/services/bulk_upsert", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := New("test-key", WithBaseURL(srv.URL), WithMaxRetries(0))
+	ents := []catalog.DesiredEntity{{ExternalID: "svc", Name: "Svc", Fields: map[string]string{AttrOwnerTeam: "Platform notes"}}}
+	if _, err := c.BulkUpsertNative(context.Background(), NativeService, ents); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ent := body["entities"].([]any)[0].(map[string]any)
+	if _, present := ent["owner_group_ids"]; present {
+		t.Errorf("expected no owner_group_ids when owner_team is a custom property, got %v", ent["owner_group_ids"])
+	}
+	fields, _ := ent["fields"].([]any)
+	if len(fields) != 1 || fields[0].(map[string]any)["catalog_field_id"] != AttrOwnerTeam || fields[0].(map[string]any)["value"] != "Platform notes" {
+		t.Errorf("expected owner_team sent as a catalog field, got %v", ent["fields"])
+	}
+}
+
+func TestServiceToLive_OwnerTeamCustomProperty(t *testing.T) {
+	svc := rootly.Service{Name: "svc", OwnerGroupIDs: nullable.NewNullableWithValue([]string{"team-1"})}
+	if got, ok := serviceToLive("id", svc, map[string]string{"prop-1": AttrOwnerTeam}).Fields[AttrOwnerTeam]; ok {
+		t.Errorf("expected owners not reported as owner_team when it is a custom property, got %q", got)
+	}
+}
+
+func TestKnownAttrsWithProps(t *testing.T) {
+	if !KnownAttrsWithProps(NativeService, nil)[AttrOwnerTeam] {
+		t.Error("expected owner_team built-in without a custom property")
+	}
+	if KnownAttrsWithProps(NativeService, []NativePropertyInfo{{Slug: AttrOwnerTeam}})[AttrOwnerTeam] {
+		t.Error("expected owner_team not built-in when a custom property uses the slug")
+	}
+	if !NativeKnownAttrs(NativeService)[AttrOwnerTeam] {
+		t.Error("expected the shared known-attrs map left unchanged")
 	}
 }

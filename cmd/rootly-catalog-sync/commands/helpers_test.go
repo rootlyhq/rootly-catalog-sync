@@ -794,9 +794,21 @@ func TestAdopt_ResolvesReferenceFields(t *testing.T) {
 	}
 }
 
-func teamsServer(t *testing.T) *httptest.Server {
+func teamsServer(t *testing.T, propertySlugs ...string) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
+	properties := func(w http.ResponseWriter, r *http.Request) {
+		data := make([]map[string]any, len(propertySlugs))
+		for i, slug := range propertySlugs {
+			data[i] = map[string]any{"id": "prop-" + slug, "type": "catalog_properties", "attributes": map[string]any{"name": slug, "slug": slug, "kind": "text"}}
+		}
+		jsonAPI(w, map[string]any{
+			"data": data, "links": map[string]any{"self": ""},
+			"meta": map[string]any{"total_pages": 1, "current_page": 1, "total_count": len(data)},
+		})
+	}
+	mux.HandleFunc("/v1/services/properties", properties)
+	mux.HandleFunc("/v1/functionalities/properties", properties)
 	mux.HandleFunc("/v1/teams", func(w http.ResponseWriter, r *http.Request) {
 		team := func(id, name, externalID, backstageID string) map[string]any {
 			return map[string]any{"id": id, "type": "groups", "attributes": map[string]any{
@@ -895,5 +907,27 @@ func TestResolveReferenceFields_FunctionalityOwnerTeam(t *testing.T) {
 	}
 	if got := desired[0].Fields[client.AttrOwnerTeam]; got != "t-sre" {
 		t.Errorf("owner_team = %q, want t-sre", got)
+	}
+}
+
+func TestResolveReferenceFields_OwnerTeamCustomProperty(t *testing.T) {
+	srv := teamsServer(t, client.AttrOwnerTeam)
+	defer srv.Close()
+	cl := client.New("test-key", client.WithBaseURL(srv.URL), client.WithMaxRetries(0))
+
+	out := config.Output{Type: client.NativeService, Fields: map[string]config.FieldValue{client.AttrOwnerTeam: {Value: "{{ .notes }}"}}}
+	desired := []catalog.DesiredEntity{
+		{ExternalID: "a", Fields: map[string]string{client.AttrOwnerTeam: "Platform notes"}},
+		{ExternalID: "b", Fields: map[string]string{client.AttrOwnerTeam: ""}},
+	}
+
+	if err := resolveReferenceFields(context.Background(), cl, out, desired); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := desired[0].Fields[client.AttrOwnerTeam]; got != "Platform notes" {
+		t.Errorf("owner_team = %q, want the custom property value unchanged", got)
+	}
+	if _, ok := desired[1].Fields[client.AttrOwnerTeam]; !ok {
+		t.Error("expected an empty custom owner_team value kept like any other property")
 	}
 }

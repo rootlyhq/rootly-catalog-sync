@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/oapi-codegen/nullable"
@@ -30,6 +31,9 @@ type Client struct {
 	httpClient *http.Client
 	maxRetries int
 	sdk        *rootly.ClientWithResponses
+
+	ownerTeamMu         sync.Mutex
+	ownerTeamIsProperty map[string]bool
 }
 
 type CatalogSpec struct {
