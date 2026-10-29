@@ -5,7 +5,7 @@ go 1.26.10
 require (
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/bmatcuk/doublestar/v4 v4.10.3
+	github.com/bmatcuk/doublestar/v4 v4.10.4
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/google/go-github/v72 v72.0.0
 	github.com/google/go-jsonnet v0.22.0
