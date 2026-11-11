@@ -29,8 +29,27 @@ golangci-lint run ./...
 3. Make your changes
 4. Run tests: `go test ./...`
 5. Run lint: `golangci-lint run ./...`
-6. Commit with a descriptive message
-7. Push and open a Pull Request
+6. Commit with a [Conventional Commit](#commit-messages-and-pr-titles) message
+7. Push and open a Pull Request with a Conventional Commit title
+
+## Commit messages and PR titles
+
+Use `<type>(<optional scope>): <description>` for commit messages and PR titles:
+
+```text
+feat(source): add a new catalog source [PRF-3498]
+fix(backstage): normalize entity references [TER-227]
+docs: clarify sync configuration
+chore(deps): update dependencies
+```
+
+Use `feat` for new features and `fix` for bug fixes. Mark breaking changes with
+`!` before the colon, for example `feat!: remove a deprecated configuration option`.
+Keep Linear issue IDs at the end of the title and link the ticket in the PR
+description; the title must start with the Conventional Commit type.
+
+Release Please uses commit messages to generate release notes and version bumps.
+When squash-merging, ensure the final commit title follows this format too.
 
 ## Code structure
 
